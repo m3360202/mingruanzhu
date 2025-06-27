@@ -1,0 +1,13 @@
+@keyframes animation-zoom-in {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.05);
+  }
+}
+
+.mainImg {
+  animation: animation-zoom-in 3s ease forwards;
+}

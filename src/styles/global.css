@@ -1,0 +1,104 @@
+/* stylelint-disable scss/at-rule-no-unknown */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-koho: var(--font-koho), sans-serif;
+  --font-italiana: var(--font-italiana), serif;
+}
+
+/* Set default text size to large */
+@layer base {
+  html {
+    font-size: 62.5%; /* 62.5% of 16px = 10px */
+  }
+
+  body {
+    font-family: var(--font-koho);
+  }
+
+  p, span, div, a, button, input, textarea, select, label {
+    @apply text-lg;
+  }
+}
+
+/* Custom utility classes */
+@layer utilities {
+  .font-koho {
+    font-family: var(--font-koho);
+  }
+  
+  .font-italiana {
+    font-family: var(--font-italiana);
+  }
+
+  .cinematic-glow {
+    text-shadow: 0 0 10px rgba(106, 179, 251, 0.7), 0 0 20px rgba(106, 179, 251, 0.5);
+    box-shadow: 0 0 10px rgba(106, 179, 251, 0.3), 0 0 20px rgba(106, 179, 251, 0.1);
+  }
+
+  .cinematic-text-shadow {
+    text-shadow: 0 0 10px rgba(106, 179, 251, 0.7), 0 0 20px rgba(106, 179, 251, 0.5);
+  }
+
+  .text-theme-text {
+    color: #4b5563; /* gray-700 */
+  }
+
+  .glass-navbar {
+    background: rgba(243, 244, 246, 0.9); /* gray-100 at 90% opacity */
+    backdrop-filter: blur(8px);
+    border-radius: 9999px; /* full rounded */
+  }
+  
+  .floating-menu-bar {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+/* Basic AOS Animation Styles */
+[data-aos] {
+  opacity: 0;
+  transition-property: opacity, transform;
+  transition-timing-function: ease;
+  transition-duration: 600ms;
+}
+
+[data-aos].aos-animate {
+  opacity: 1;
+}
+
+[data-aos="fade-up"] {
+  transform: translate3d(0, 20px, 0);
+}
+
+[data-aos="fade-up"].aos-animate {
+  transform: translate3d(0, 0, 0);
+}
+
+[data-aos="fade-down"] {
+  transform: translate3d(0, -20px, 0);
+}
+
+[data-aos="fade-down"].aos-animate {
+  transform: translate3d(0, 0, 0);
+}
+
+[data-aos="fade-right"] {
+  transform: translate3d(-20px, 0, 0);
+}
+
+[data-aos="fade-right"].aos-animate {
+  transform: translate3d(0, 0, 0);
+}
+
+[data-aos="fade-left"] {
+  transform: translate3d(20px, 0, 0);
+}
+
+[data-aos="fade-left"].aos-animate {
+  transform: translate3d(0, 0, 0);
+}
