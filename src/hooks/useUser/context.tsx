@@ -7,9 +7,8 @@ import React, {
   type SetStateAction
 } from 'react';
 
-import { getCookie } from '@/utils/cookies';
 // 定义用户类型
-interface User {
+export interface User {
   token: string | null;
   email: string | null;
   mobile: string | null;

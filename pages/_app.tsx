@@ -5,7 +5,6 @@ import { CircularProgress } from '@mui/material';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import * as Sentry from '@sentry/react';
-import AOS from 'aos';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Script from 'next/script';
@@ -16,17 +15,9 @@ import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 
 import createEmotionCache from '@/clients/EmotionCache';
-import { AuthProvider } from '@/contexts/AuthContext';
-import { ChatbotProvider } from "@/contexts/ChatbotContext";
-import { UserProvider } from "@/hooks/useUser/context";
+import { UserProvider, type User } from "@/hooks/useUser/context";
 import theme, { koho, italiana } from "@/theme";
 import "@/styles/global.css";
-import { ToastProvider } from "@/utils/toast";
-import Chatbot from "@/components/Chatbot/Chatbot";
-import GlobalEventListener from "@/components/GlobalEventListener";
-
-import type { User } from '@supabase/supabase-js';
-import { ErrorProvider } from '@/contexts/ErrorContext';
 
 export type NextPageWithLayout<P = Record<string, unknown>, IP = P> = NextPage<
   P,
@@ -45,7 +36,6 @@ const clientSideEmotionCache = createEmotionCache();
 function MyApp(props: AppPropsWithLayout) {
   const { Component, emotionCache = clientSideEmotionCache, pageProps } = props;
   const router = useRouter();
-  const { locale } = router;
   const getLayout = Component.getLayout ?? ((page) => page);
   const [loading, setLoading] = useState(false);
 
@@ -88,38 +78,28 @@ function MyApp(props: AppPropsWithLayout) {
         </Head>
         <Script src="https://static.geetest.com/v4/gt4.js" />
         <ThemeProvider theme={theme}>
-          <ErrorProvider>
-            <AuthProvider>
-              <UserProvider>
-                <ToastProvider>
-                  <ChatbotProvider>
-                    <CssBaseline />
-                    {loading && (
-                      <div
-                        style={{
-                          position: "fixed",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          height: "100%",
-                          display: "flex",
-                          justifyContent: "center",
-                          alignItems: "center",
-                          backgroundColor: "rgba(255, 255, 255, 0.7)",
-                          zIndex: 9999,
-                        }}
-                      >
-                        <CircularProgress />
-                      </div>
-                    )}
-                    {getLayout(<Component {...pageProps} user={user} />)}
-                    <Chatbot />
-                    <GlobalEventListener />
-                  </ChatbotProvider >
-                </ToastProvider >
-              </UserProvider >
-            </AuthProvider >
-          </ErrorProvider>
+          <UserProvider>
+            <CssBaseline />
+            {loading && (
+              <div
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  backgroundColor: "rgba(255, 255, 255, 0.7)",
+                  zIndex: 9999,
+                }}
+              >
+                <CircularProgress />
+              </div>
+            )}
+            {getLayout(<Component {...pageProps} user={user} />)}
+          </UserProvider >
         </ThemeProvider >
       </div >
     </CacheProvider >
