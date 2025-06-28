@@ -25,6 +25,6 @@ export interface CodePage {
   isChecking: boolean;
   bugCheckResult?: string;
   hasError?: boolean;
-  category: 'frontend' | 'backend' | 'database';
+  category: 'backend' | 'frontend' | 'database' | 'config';
   description: string;
 } 

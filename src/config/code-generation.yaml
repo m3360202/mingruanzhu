@@ -1,0 +1,237 @@
+# 代码生成配置文件
+code_generation:
+  # 基本配置
+  min_pages: 30
+  min_lines_per_page: 50
+  
+  # 代码分类和比例
+  categories:
+    backend:
+      name: "后端代码"
+      percentage: 50
+      color: "success"
+      pages: 15
+    frontend:
+      name: "前端代码"  
+      percentage: 30
+      color: "primary"
+      pages: 9
+    database:
+      name: "数据库"
+      percentage: 10
+      color: "warning"
+      pages: 3
+    config:
+      name: "配置文件"
+      percentage: 10
+      color: "info"
+      pages: 3
+
+  # 代码模板结构
+  templates:
+    backend:
+      - name: "主应用入口"
+        description: "应用程序主入口类，包含启动配置和初始化逻辑"
+        min_lines: 80
+        priority: 1
+      - name: "用户管理控制器"
+        description: "RESTful API接口控制器，处理用户相关的HTTP请求"
+        min_lines: 70
+        priority: 2
+      - name: "用户服务层"
+        description: "业务逻辑处理层，封装用户管理的核心业务逻辑"
+        min_lines: 85
+        priority: 2
+      - name: "用户数据模型"
+        description: "数据实体类，定义用户数据结构和数据库映射关系"
+        min_lines: 65
+        priority: 2
+      - name: "数据访问层"
+        description: "数据访问接口，提供数据库CRUD操作"
+        min_lines: 75
+        priority: 2
+      - name: "权限管理控制器"
+        description: "权限验证和授权管理的API接口"
+        min_lines: 90
+        priority: 3
+      - name: "角色管理服务"
+        description: "角色权限管理的业务逻辑处理"
+        min_lines: 80
+        priority: 3
+      - name: "系统配置类"
+        description: "系统参数配置和应用设置管理"
+        min_lines: 70
+        priority: 3
+      - name: "异常处理器"
+        description: "全局异常处理和错误响应管理"
+        min_lines: 60
+        priority: 3
+      - name: "工具类库"
+        description: "通用工具方法和辅助函数集合"
+        min_lines: 95
+        priority: 3
+      - name: "数据验证器"
+        description: "输入数据验证和格式检查逻辑"
+        min_lines: 75
+        priority: 4
+      - name: "缓存管理器"
+        description: "数据缓存策略和缓存操作管理"
+        min_lines: 85
+        priority: 4
+      - name: "日志管理器"
+        description: "系统日志记录和日志分析功能"
+        min_lines: 70
+        priority: 4
+      - name: "文件上传处理"
+        description: "文件上传下载和存储管理功能"
+        min_lines: 80
+        priority: 4
+      - name: "消息队列处理"
+        description: "异步消息处理和队列管理逻辑"
+        min_lines: 90
+        priority: 4
+
+    frontend:
+      - name: "主应用组件"
+        description: "React应用主组件，包含路由和全局状态管理"
+        min_lines: 75
+        priority: 1
+      - name: "用户管理页面"
+        description: "用户列表展示和管理操作界面"
+        min_lines: 85
+        priority: 2
+      - name: "用户表单组件"
+        description: "用户信息录入和编辑表单组件"
+        min_lines: 70
+        priority: 2
+      - name: "API服务层"
+        description: "HTTP客户端封装，处理前端与后端API的通信"
+        min_lines: 80
+        priority: 2
+      - name: "路由配置"
+        description: "React Router路由配置，定义页面导航和访问控制"
+        min_lines: 65
+        priority: 2
+      - name: "状态管理"
+        description: "全局状态管理，管理应用数据和用户状态"
+        min_lines: 90
+        priority: 3
+      - name: "权限组件"
+        description: "权限验证和访问控制的前端组件"
+        min_lines: 60
+        priority: 3
+      - name: "公共组件库"
+        description: "可复用的UI组件集合和通用组件"
+        min_lines: 95
+        priority: 3
+      - name: "数据表格组件"
+        description: "数据展示和操作的表格组件"
+        min_lines: 80
+        priority: 4
+
+    database:
+      - name: "数据库初始化脚本"
+        description: "数据库表结构创建和基础数据初始化"
+        min_lines: 120
+        priority: 1
+      - name: "数据迁移脚本"
+        description: "数据库版本升级和数据迁移脚本"
+        min_lines: 80
+        priority: 2
+      - name: "存储过程"
+        description: "复杂业务逻辑的数据库存储过程"
+        min_lines: 90
+        priority: 3
+
+    config:
+      - name: "应用配置文件"
+        description: "应用程序配置参数和环境变量设置"
+        min_lines: 60
+        priority: 1
+      - name: "部署配置"
+        description: "Docker和部署相关的配置文件"
+        min_lines: 70
+        priority: 2
+      - name: "构建配置"
+        description: "项目构建和打包配置文件"
+        min_lines: 55
+        priority: 3
+
+  # DeepSeek API 提示词模板
+  prompts:
+    system_prompt: |
+      你是一个专业的软件开发专家，擅长根据需求生成高质量的代码。
+      请根据用户提供的软件信息和功能描述，生成符合以下要求的代码：
+      1. 代码必须完整可运行，包含所有必要的导入和依赖
+      2. 代码风格规范，注释详细
+      3. 包含适当的错误处理和异常管理
+      4. 遵循最佳实践和设计模式
+      5. 代码行数不少于{min_lines}行
+      6. 包含详细的功能说明和技术文档
+
+    code_template: |
+      请为"{software_name}"软件生成"{module_name}"模块的代码。
+      
+      软件信息：
+      - 软件名称: {software_name}
+      - 开发语言: {development_language}
+      - 数据库: {database}
+      - 平台: {platforms}
+      - 功能描述: {functional_description}
+      
+      模块要求：
+      - 模块名称: {module_name}
+      - 模块描述: {module_description}
+      - 最少行数: {min_lines}行
+      - 代码分类: {category}
+      
+      用户提示词: {user_prompt}
+      
+      请生成完整的代码文件，包含：
+      1. 文件头注释（包含文件描述、作者、创建时间等）
+      2. 必要的导入语句
+      3. 完整的类/函数实现
+      4. 详细的方法注释
+      5. 异常处理逻辑
+      6. 示例使用代码（如适用）
+
+    documentation_template: |
+      请为"{software_name}"软件生成详细的技术说明书。
+      
+      软件基本信息：
+      - 软件名称: {software_name}
+      - 版本号: {version}
+      - 开发者: {developer}
+      - 开发语言: {development_language}
+      - 数据库: {database}
+      - 支持平台: {platforms}
+      - 开发完成日期: {completion_date}
+      - 软件类型: {software_type}
+      - 行业领域: {industry}
+      
+      功能描述：
+      {functional_description}
+      
+      代码结构：
+      {code_structure}
+      
+      请生成包含以下章节的详细说明书：
+      1. 软件概述
+      2. 系统架构设计
+      3. 功能模块说明
+      4. 技术实现方案
+      5. 数据库设计
+      6. 接口设计
+      7. 部署和运维
+      8. 系统特色和创新点
+      9. 性能指标
+      10. 安全机制
+      
+      说明书应该专业、详细，符合软件著作权申报要求。
+
+  # 生成配置
+  generation:
+    batch_size: 3  # 每批生成的页面数
+    delay_between_batches: 2000  # 批次间延迟（毫秒）
+    max_retries: 3  # 最大重试次数
+    timeout: 30000  # 单次请求超时时间（毫秒） 

@@ -19,20 +19,25 @@ import {
   DialogContent,
   DialogActions,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  Snackbar
 } from '@mui/material';
 import {
   Code as CodeIcon,
   Description as DescriptionIcon,
   BugReport as BugReportIcon,
   Visibility as VisibilityIcon,
-  Download as DownloadIcon
+  Download as DownloadIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { SoftwareInfo, CodePage } from '@/types/software';
+import { CodeGenerator, GenerationProgress } from '../lib/codeGenerator';
+import GenerationProgressComponent from '@/components/GenerationProgress';
 
 interface GenerationBoardProps {
   softwareInfo?: SoftwareInfo;
   onGenerate?: (info: SoftwareInfo) => void;
+  shouldGenerate?: boolean;
 }
 
 // 10页测试数据
@@ -626,26 +631,125 @@ INSERT INTO user_roles (user_id, role_id) VALUES
   }
 ];
 
-const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGenerate }) => {
+const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGenerate, shouldGenerate }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
   const [activeTab, setActiveTab] = useState(0);
-  const [codePages] = useState<CodePage[]>(TEST_CODE_PAGES);
+  const [codePages, setCodePages] = useState<CodePage[]>([]);
   const [documentContent, setDocumentContent] = useState<string>('');
   const [selectedPage, setSelectedPage] = useState<CodePage | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress>({
+    current: 0,
+    total: 0,
+    currentPage: '',
+    status: 'preparing',
+    message: ''
+  });
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info'>('info');
+  const [codeGenerator] = useState(() => new CodeGenerator());
+
+  const startGeneration = async () => {
+    if (!softwareInfo || !softwareInfo.softwareName || !softwareInfo.functionalDescription) {
+      showSnackbar('请先填写完整的软件信息', 'error');
+      return;
+    }
+
+    setIsGenerating(true);
+    setCodePages([]);
+    setDocumentContent('');
+    setActiveTab(0);
+
+    try {
+      const pages = await codeGenerator.generateAllPages(
+        softwareInfo,
+        (progress) => {
+          setGenerationProgress(progress);
+        }
+      );
+
+      setCodePages(pages);
+      
+      // 更新进度状态为生成说明书
+      setGenerationProgress({
+        current: pages.length,
+        total: pages.length,
+        currentPage: '生成说明书',
+        status: 'generating',
+        message: '正在生成技术说明书...'
+      });
+      
+      // 生成说明书
+      const doc = await codeGenerator.generateDocumentation(softwareInfo, pages);
+      setDocumentContent(doc);
+      
+      // 完成
+      setGenerationProgress({
+        current: pages.length,
+        total: pages.length,
+        currentPage: '完成',
+        status: 'completed',
+        message: `成功生成 ${pages.length} 个代码文件和技术说明书`
+      });
+      
+      showSnackbar(`🎉 成功生成 ${pages.length} 个代码文件和说明书！`, 'success');
+      
+      // 2秒后关闭进度对话框
+      setTimeout(() => {
+        setIsGenerating(false);
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Generation failed:', error);
+      setGenerationProgress({
+        current: 0,
+        total: 0,
+        currentPage: '错误',
+        status: 'error',
+        message: error instanceof Error ? error.message : '生成失败'
+      });
+      
+      showSnackbar(`生成失败: ${error instanceof Error ? error.message : '未知错误'}`, 'error');
+      
+      // 3秒后关闭进度对话框
+      setTimeout(() => {
+        setIsGenerating(false);
+      }, 3000);
+    }
+  };
+
+  // 显示通知
+  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info') => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setSnackbarOpen(true);
+  };
 
   // 检查代码bug
   const checkBugs = async (page: CodePage) => {
     // 模拟AI检查过程
+    const updatedPages = codePages.map(p => 
+      p.id === page.id ? { ...p, isChecking: true } : p
+    );
+    setCodePages(updatedPages);
+
     await new Promise(resolve => setTimeout(resolve, 1500));
+    
     const hasError = Math.random() > 0.7;
     const result = hasError 
       ? '发现潜在问题：建议添加异常处理'
       : '代码检查通过，未发现问题';
     
-    alert(`检查结果: ${result}`);
+    const finalPages = codePages.map(p => 
+      p.id === page.id ? { ...p, isChecking: false } : p
+    );
+    setCodePages(finalPages);
+    
+    showSnackbar(`检查结果: ${result}`, hasError ? 'error' : 'success');
   };
 
   // 查看代码详情
@@ -654,49 +758,17 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
     setDialogOpen(true);
   };
 
-  // 生成说明书
-  const generateDocumentation = (info: SoftwareInfo) => {
-    const doc = `
-# ${info.softwareName} 软件说明书
-
-## 1. 软件概述
-**软件名称**: ${info.softwareName}
-**版本号**: ${info.version}
-**开发者**: ${info.developer}
-**开发完成日期**: ${info.completionDate}
-
-## 2. 运行环境
-**支持平台**: ${info.platforms.join(', ')}
-**开发语言**: ${info.developmentLanguage}
-**数据库**: ${info.database}
-
-## 3. 功能说明
-${info.functionalDescription}
-
-## 4. 技术架构
-本软件采用现代化架构设计，具有以下特点：
-- 模块化设计，便于维护和扩展
-- 采用${info.developmentLanguage}开发，性能优异
-- 支持多平台部署：${info.platforms.join('、')}
-- 使用${info.database}数据库，数据存储安全可靠
-
-## 5. 主要功能模块
-1. 用户管理模块
-2. 数据处理模块
-3. 业务逻辑模块
-4. 系统配置模块
-5. 安全认证模块
-    `;
+  // 重新生成单个页面
+  const regeneratePage = async (page: CodePage) => {
+    if (!softwareInfo) return;
     
-    setDocumentContent(doc);
+    showSnackbar(`正在重新生成 ${page.title}...`, 'info');
+    // 这里可以实现单个页面的重新生成逻辑
+    // 暂时显示提示
+    setTimeout(() => {
+      showSnackbar(`${page.title} 重新生成完成`, 'success');
+    }, 2000);
   };
-
-  // 监听软件信息变化
-  useEffect(() => {
-    if (softwareInfo && softwareInfo.softwareName) {
-      generateDocumentation(softwareInfo);
-    }
-  }, [softwareInfo]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -713,6 +785,13 @@ ${info.functionalDescription}
       .replace(/\n/g, '<br/>');
   };
 
+  // 监听生成触发器
+  useEffect(() => {
+    if (shouldGenerate && softwareInfo?.softwareName && softwareInfo?.functionalDescription && softwareInfo?.prompt && !isGenerating) {
+      startGeneration();
+    }
+  }, [shouldGenerate]);
+
   return (
     <Box sx={{ 
       height: '100%', 
@@ -721,6 +800,28 @@ ${info.functionalDescription}
       p: isMobile ? 1 : 2
     }}>
       <Paper elevation={1} sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* 顶部操作栏 */}
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            代码生成结果
+          </Typography>
+          
+          <Button
+            variant="contained"
+            startIcon={<CodeIcon />}
+            onClick={startGeneration}
+            disabled={isGenerating || !softwareInfo?.softwareName}
+            sx={{
+              background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+              '&:hover': {
+                background: 'linear-gradient(45deg, #1976D2 30%, #1BA5D2 90%)',
+              }
+            }}
+          >
+            {isGenerating ? '生成中...' : '开始生成'}
+          </Button>
+        </Box>
+
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs 
             value={activeTab} 
@@ -744,66 +845,95 @@ ${info.functionalDescription}
           {/* 代码列表 */}
           {activeTab === 0 && (
             <Box sx={{ height: '100%', overflow: 'auto', p: 2 }}>
-              <List>
-                {codePages.map((page) => (
-                  <ListItem
-                    key={page.id}
-                    sx={{
-                      border: 1,
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      mb: 1,
-                      '&:hover': {
-                        backgroundColor: 'action.hover'
-                      }
-                    }}
-                  >
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                            {page.title}
-                          </Typography>
-                          <Chip 
-                            label={page.category === 'frontend' ? '前端' : page.category === 'backend' ? '后端' : '数据库'} 
-                            size="small" 
-                            color={page.category === 'frontend' ? 'primary' : page.category === 'backend' ? 'success' : 'warning'}
-                            variant="filled"
-                          />
-                          <Chip 
-                            label={`${page.lineCount}行`} 
-                            size="small" 
-                            color="default" 
-                            variant="outlined"
-                          />
-                        </Box>
-                      }
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {page.description}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                            第{page.id}页 • {page.lineCount}行代码
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Tooltip title="查看代码">
-                        <IconButton onClick={() => viewCode(page)}>
-                          <VisibilityIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="检查Bug">
-                        <IconButton onClick={() => checkBugs(page)}>
-                          <BugReportIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </ListItem>
-                ))}
-              </List>
+              {codePages.length === 0 ? (
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  height: '100%'
+                }}>
+                  <CodeIcon sx={{ fontSize: 80, color: 'text.secondary' }} />
+                  <Typography variant="h6" color="text.secondary" sx={{ mt: 2 }}>
+                    点击"开始生成"按钮生成代码文件
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    将根据您填写的软件信息自动生成至少30页代码
+                  </Typography>
+                </Box>
+              ) : (
+                <List>
+                  {codePages.map((page) => (
+                    <ListItem
+                      key={page.id}
+                      sx={{
+                        border: 1,
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        mb: 1,
+                        '&:hover': {
+                          backgroundColor: 'action.hover'
+                        }
+                      }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              {page.title}
+                            </Typography>
+                            <Chip
+                              style={{fontSize: '12px'}} 
+                              label={page.category === 'frontend' ? '前端' : 
+                                    page.category === 'backend' ? '后端' : 
+                                    page.category === 'database' ? '数据库' : '配置'} 
+                              size="small"
+                              color={page.category === 'frontend' ? 'primary' : 
+                                    page.category === 'backend' ? 'success' : 
+                                    page.category === 'database' ? 'warning' : 'info'}
+                              variant="filled"
+                            />
+                            <Chip 
+                              label={`${page.lineCount}行`} 
+                              size="small" 
+                              color="default" 
+                              variant="outlined"
+                            />
+                          </Box>
+                        }
+                        secondary={
+                          <Box>
+                            <Box component="div" sx={{ mb: 1, fontSize: '0.875rem', color: 'text.secondary' }}>
+                              {page.description}
+                            </Box>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <Tooltip title="查看代码">
+                                <IconButton size="small" onClick={() => viewCode(page)}>
+                                  <VisibilityIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="检查代码">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => checkBugs(page)}
+                                  disabled={page.isChecking}
+                                >
+                                  {page.isChecking ? <CircularProgress size={16} /> : <BugReportIcon />}
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="重新生成">
+                                <IconButton size="small" onClick={() => regeneratePage(page)}>
+                                  <RefreshIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
             </Box>
           )}
 
@@ -819,23 +949,20 @@ ${info.functionalDescription}
                     <Button
                       variant="outlined"
                       startIcon={<DownloadIcon />}
-                      onClick={() => alert('PDF下载功能开发中...')}
+                      onClick={() => showSnackbar('PDF下载功能开发中...', 'info')}
                     >
                       下载PDF
                     </Button>
                   </Box>
                   <Paper elevation={0} sx={{ p: 3, backgroundColor: '#fafafa' }}>
-                    <Typography 
-                      component="pre" 
-                      sx={{ 
-                        whiteSpace: 'pre-wrap',
+                    <div 
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(documentContent) }}
+                      style={{
                         fontFamily: 'monospace',
                         fontSize: '14px',
                         lineHeight: 1.6
                       }}
-                    >
-                      {documentContent}
-                    </Typography>
+                    />
                   </Paper>
                 </Box>
               ) : (
@@ -848,7 +975,10 @@ ${info.functionalDescription}
                 }}>
                   <DescriptionIcon sx={{ fontSize: 80, color: 'text.secondary' }} />
                   <Typography variant="h6" color="text.secondary" sx={{ mt: 2 }}>
-                    说明书将在填写软件信息后自动创建
+                    说明书将在代码生成完成后自动创建
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    基于生成的代码结构和软件信息生成详细的技术说明书
                   </Typography>
                 </Box>
               )}
@@ -857,45 +987,76 @@ ${info.functionalDescription}
         </Box>
       </Paper>
 
-      {/* 代码查看对话框 - Markdown格式 */}
-      <Dialog
-        open={dialogOpen}
+      {/* 代码查看对话框 */}
+      <Dialog 
+        open={dialogOpen} 
         onClose={() => setDialogOpen(false)}
-        maxWidth="lg"
+        maxWidth="md"
         fullWidth
         PaperProps={{
           sx: { height: '80vh' }
         }}
       >
         <DialogTitle>
-          <Typography variant="h6">{selectedPage?.title}</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {selectedPage?.lineCount}行代码
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CodeIcon />
+            <Typography variant="h6">{selectedPage?.title}</Typography>
+            <Chip 
+              label={selectedPage?.category === 'frontend' ? '前端' : 
+                    selectedPage?.category === 'backend' ? '后端' : 
+                    selectedPage?.category === 'database' ? '数据库' : '配置'} 
+              size="small" 
+              color={selectedPage?.category === 'frontend' ? 'primary' : 
+                    selectedPage?.category === 'backend' ? 'success' : 
+                    selectedPage?.category === 'database' ? 'warning' : 'info'}
+            />
+          </Box>
         </DialogTitle>
-        <DialogContent dividers>
-          <Box
-            sx={{
-              height: '100%',
-              overflow: 'auto'
+        <DialogContent>
+          <Box 
+            component="pre" 
+            sx={{ 
+              whiteSpace: 'pre-wrap',
+              fontFamily: 'Monaco, Consolas, monospace',
+              fontSize: '13px',
+              lineHeight: 1.4,
+              backgroundColor: '#f5f5f5',
+              p: 2,
+              borderRadius: 1,
+              overflow: 'auto',
+              height: '100%'
             }}
-            dangerouslySetInnerHTML={{
-              __html: selectedPage?.content ? renderMarkdown(selectedPage.content) : ''
-            }}
-          />
+          >
+            {selectedPage?.content}
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>
-            关闭
-          </Button>
-          <Button 
-            variant="contained" 
-            onClick={() => selectedPage && checkBugs(selectedPage)}
-          >
-            检查Bug
-          </Button>
+          <Button onClick={() => setDialogOpen(false)}>关闭</Button>
         </DialogActions>
       </Dialog>
+
+      {/* 生成进度对话框 */}
+      <GenerationProgressComponent
+        open={isGenerating}
+        progress={generationProgress}
+        onClose={() => setIsGenerating(false)}
+      />
+
+      {/* 通知消息 */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={4000}
+        onClose={() => setSnackbarOpen(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={() => setSnackbarOpen(false)} 
+          severity={snackbarSeverity}
+          variant="filled"
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

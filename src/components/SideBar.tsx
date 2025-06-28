@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -138,8 +138,18 @@ const SideBar: React.FC<SideBarProps> = ({ onInfoChange, onGenerate }) => {
   };
 
   const handleGenerate = () => {
+    if (!softwareInfo.softwareName || !softwareInfo.developer || !softwareInfo.functionalDescription || !softwareInfo.prompt) {
+      alert('请填写完整的必填信息（软件名称、开发者、功能描述、AI提示词）');
+      return;
+    }
+    
     onGenerate?.(softwareInfo);
   };
+
+  // 监听软件信息变化
+  useEffect(() => {
+    onInfoChange?.(softwareInfo);
+  }, [softwareInfo, onInfoChange]);
 
   return (
     <Box
@@ -153,7 +163,7 @@ const SideBar: React.FC<SideBarProps> = ({ onInfoChange, onGenerate }) => {
     >
       <Paper elevation={2} sx={{ p: 3 }}>
         <Typography variant="h6" gutterBottom color="primary" sx={{ fontWeight: 'bold' }}>
-          软著申报信息
+          智慧树软著资料生成系统
         </Typography>
         
         <Divider sx={{ mb: 3 }} />

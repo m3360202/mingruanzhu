@@ -12,14 +12,20 @@ const SoftwareCopyrightPage: NextPage = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [softwareInfo, setSoftwareInfo] = useState<SoftwareInfo | undefined>();
+  const [shouldGenerate, setShouldGenerate] = useState(false);
 
   const handleInfoChange = (info: SoftwareInfo) => {
     setSoftwareInfo(info);
+    // 重置生成触发器
+    setShouldGenerate(false);
   };
 
   const handleGenerate = (info: SoftwareInfo) => {
     setSoftwareInfo(info);
-    // 这里可以添加额外的生成逻辑
+    // 触发生成
+    setShouldGenerate(true);
+    // 重置触发器以便下次使用
+    setTimeout(() => setShouldGenerate(false), 1000);
   };
 
   return (
@@ -71,6 +77,7 @@ const SoftwareCopyrightPage: NextPage = () => {
             <GenerationBoard 
               softwareInfo={softwareInfo}
               onGenerate={handleGenerate}
+              shouldGenerate={shouldGenerate}
             />
           </Box>
         </Box>
