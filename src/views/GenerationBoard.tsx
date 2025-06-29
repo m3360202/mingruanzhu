@@ -28,11 +28,16 @@ import {
   BugReport as BugReportIcon,
   Visibility as VisibilityIcon,
   Download as DownloadIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  Archive as ArchiveIcon
 } from '@mui/icons-material';
 import { SoftwareInfo, CodePage } from '@/types/software';
 import { CodeGenerator, GenerationProgress } from '../lib/codeGenerator';
 import GenerationProgressComponent from '@/components/GenerationProgress';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 interface GenerationBoardProps {
   softwareInfo?: SoftwareInfo;
@@ -792,6 +797,179 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
     }
   }, [shouldGenerate]);
 
+  const exportToPDF = async () => {
+    if (!documentContent) {
+      showSnackbar('暂无说明书内容可导出', 'error');
+      return;
+    }
+
+    try {
+      showSnackbar('正在生成PDF...', 'info');
+      
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxWidth = pageWidth - 2 * margin;
+      
+      // 设置字体
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(12);
+      
+      // 标题
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`${softwareInfo?.softwareName || '软件'} - 技术说明书`, margin, margin + 10);
+      
+      // 内容
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      
+      // 清理HTML标签并分行处理
+      const cleanContent = documentContent
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+      
+      const lines = pdf.splitTextToSize(cleanContent, maxWidth);
+      let yPosition = margin + 25;
+      
+      lines.forEach((line: string) => {
+        if (yPosition > pageHeight - margin) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+        pdf.text(line, margin, yPosition);
+        yPosition += 5;
+      });
+      
+      pdf.save(`${softwareInfo?.softwareName || '软件说明书'}.pdf`);
+      showSnackbar('PDF导出成功！', 'success');
+    } catch (error) {
+      console.error('PDF导出失败:', error);
+      showSnackbar('PDF导出失败', 'error');
+    }
+  };
+
+  const exportAllToZIP = async () => {
+    if (codePages.length === 0 && !documentContent) {
+      showSnackbar('暂无内容可导出', 'error');
+      return;
+    }
+
+    try {
+      showSnackbar('正在打包文件...', 'info');
+      
+      const zip = new JSZip();
+      
+      // 添加代码文件
+      if (codePages.length > 0) {
+        const codeFolder = zip.folder('代码文件');
+        codePages.forEach((page) => {
+          // 根据类别创建子文件夹
+          const categoryFolder = codeFolder?.folder(
+            page.category === 'frontend' ? '前端代码' : 
+            page.category === 'backend' ? '后端代码' : 
+            page.category === 'database' ? '数据库' : '配置文件'
+          );
+          
+          // 确定文件扩展名
+          let extension = '.txt';
+          if (page.content.includes('```java')) extension = '.java';
+          else if (page.content.includes('```javascript') || page.content.includes('```js')) extension = '.js';
+          else if (page.content.includes('```typescript') || page.content.includes('```ts')) extension = '.ts';
+          else if (page.content.includes('```python')) extension = '.py';
+          else if (page.content.includes('```sql')) extension = '.sql';
+          else if (page.content.includes('```xml')) extension = '.xml';
+          else if (page.content.includes('```json')) extension = '.json';
+          
+          categoryFolder?.file(`${page.title}${extension}`, page.content);
+        });
+      }
+      
+      // 添加说明书PDF
+      if (documentContent) {
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 20;
+        const maxWidth = pageWidth - 2 * margin;
+        
+        // 设置字体和标题
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(16);
+        pdf.text(`${softwareInfo?.softwareName || '软件'} - 技术说明书`, margin, margin + 10);
+        
+        // 内容
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        
+        const cleanContent = documentContent
+          .replace(/<[^>]*>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&');
+        
+        const lines = pdf.splitTextToSize(cleanContent, maxWidth);
+        let yPosition = margin + 25;
+        
+        lines.forEach((line: string) => {
+          if (yPosition > pageHeight - margin) {
+            pdf.addPage();
+            yPosition = margin;
+          }
+          pdf.text(line, margin, yPosition);
+          yPosition += 5;
+        });
+        
+        const pdfBlob = pdf.output('blob');
+        zip.file(`${softwareInfo?.softwareName || '软件说明书'}.pdf`, pdfBlob);
+      }
+      
+      // 添加项目信息文件
+      if (softwareInfo) {
+        const projectInfo = `项目信息
+==========
+
+软件名称: ${softwareInfo.softwareName}
+版本号: ${softwareInfo.version}
+开发者: ${softwareInfo.developer}
+开发公司: ${softwareInfo.company || '未填写'}
+联系方式: ${softwareInfo.contact || '未填写'}
+邮箱: ${softwareInfo.email || '未填写'}
+地址: ${softwareInfo.address || '未填写'}
+完成日期: ${softwareInfo.completionDate}
+发布日期: ${softwareInfo.publishDate}
+软件类型: ${softwareInfo.softwareType}
+应用行业: ${softwareInfo.industry}
+支持平台: ${softwareInfo.platforms.join(', ')}
+开发语言: ${softwareInfo.developmentLanguage}
+数据库: ${softwareInfo.database}
+
+功能描述:
+${softwareInfo.functionalDescription}
+
+AI提示词:
+${softwareInfo.prompt}
+`;
+        zip.file('项目信息.txt', projectInfo);
+      }
+      
+      // 生成并下载ZIP文件
+      const content = await zip.generateAsync({ type: 'blob' });
+      const fileName = `${softwareInfo?.softwareName || '软件项目'}_完整资料.zip`;
+      saveAs(content, fileName);
+      
+      showSnackbar('完整资料包导出成功！', 'success');
+    } catch (error) {
+      console.error('ZIP导出失败:', error);
+      showSnackbar('ZIP导出失败', 'error');
+    }
+  };
+
   return (
     <Box sx={{ 
       height: '100%', 
@@ -801,25 +979,54 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
     }}>
       <Paper elevation={1} sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* 顶部操作栏 */}
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
           <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
             代码生成结果
           </Typography>
           
-          <Button
-            variant="contained"
-            startIcon={<CodeIcon />}
-            onClick={startGeneration}
-            disabled={isGenerating || !softwareInfo?.softwareName}
-            sx={{
-              background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-              '&:hover': {
-                background: 'linear-gradient(45deg, #1976D2 30%, #1BA5D2 90%)',
-              }
-            }}
-          >
-            {isGenerating ? '生成中...' : '开始生成'}
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {/* 导出按钮组 */}
+            {(codePages.length > 0 || documentContent) && (
+              <>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<DownloadIcon />}
+                  onClick={exportToPDF}
+                  disabled={!documentContent}
+                  sx={{ minWidth: 'auto' }}
+                >
+                  导出PDF
+                </Button>
+                
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<ArchiveIcon />}
+                  onClick={exportAllToZIP}
+                  disabled={codePages.length === 0 && !documentContent}
+                  sx={{ minWidth: 'auto' }}
+                >
+                  导出ZIP
+                </Button>
+              </>
+            )}
+            
+            <Button
+              variant="contained"
+              startIcon={<CodeIcon />}
+              onClick={startGeneration}
+              disabled={isGenerating || !softwareInfo?.softwareName}
+              sx={{
+                background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #1976D2 30%, #1BA5D2 90%)',
+                }
+              }}
+            >
+              {isGenerating ? '生成中...' : '开始生成'}
+            </Button>
+          </Box>
         </Box>
 
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -949,7 +1156,7 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
                     <Button
                       variant="outlined"
                       startIcon={<DownloadIcon />}
-                      onClick={() => showSnackbar('PDF下载功能开发中...', 'info')}
+                      onClick={exportToPDF}
                     >
                       下载PDF
                     </Button>

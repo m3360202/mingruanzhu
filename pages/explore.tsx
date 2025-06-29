@@ -1,5 +1,4 @@
 import React from 'react';
-import NavBar from '@/components/NavBar';
 import { Italiana } from 'next/font/google';
 const italiana = Italiana({ weight: '400', subsets: ['latin'] });
 
@@ -7,9 +6,7 @@ const ExplorePage = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-white via-blue-50 to-blue-100">
-      {/* NavBar at the top */}
-      <NavBar  activePage="explore" />
-      
+
       {/* Main content */}
       <div className="flex flex-col items-center pt-28 px-6">
         <h1 className={`text-5xl ${italiana.className} text-blue-400 mb-8`}>Explore Stories</h1>
