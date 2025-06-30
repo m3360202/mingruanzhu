@@ -658,6 +658,29 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info'>('info');
   const [codeGenerator] = useState(() => new CodeGenerator());
 
+  // 获取当前环境的页数配置信息
+  const getPageConfigInfo = () => {
+    const isTestMode = process.env.NODE_ENV === 'test' || 
+                      process.env.NEXT_PUBLIC_APP_ENV === 'test' ||
+                      process.env.NEXT_PUBLIC_TEST_MODE === 'true';
+    
+    if (isTestMode) {
+      return {
+        minPages: 1,
+        environmentText: '测试模式：最少1页代码',
+        description: '测试环境下快速生成，便于开发调试'
+      };
+    } else {
+      return {
+        minPages: 30,
+        environmentText: '正式模式：至少30页代码',
+        description: '将根据您填写的软件信息自动生成完整的代码文件'
+      };
+    }
+  };
+
+  const pageConfig = getPageConfigInfo();
+
   const startGeneration = async () => {
     if (!softwareInfo || !softwareInfo.softwareName || !softwareInfo.functionalDescription) {
       showSnackbar('请先填写完整的软件信息', 'error');
@@ -1065,7 +1088,7 @@ ${softwareInfo.prompt}
                     点击"开始生成"按钮生成代码文件
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    将根据您填写的软件信息自动生成至少30页代码
+                    {pageConfig.environmentText}
                   </Typography>
                 </Box>
               ) : (
@@ -1185,7 +1208,7 @@ ${softwareInfo.prompt}
                     说明书将在代码生成完成后自动创建
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    基于生成的代码结构和软件信息生成详细的技术说明书
+                    {pageConfig.description}
                   </Typography>
                 </Box>
               )}

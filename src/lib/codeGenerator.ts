@@ -21,6 +21,7 @@ interface CategoryConfig {
 
 interface CodeGenerationConfig {
   min_pages: number;
+  test_min_pages?: number;
   min_lines_per_page: number;
   categories: Record<string, CategoryConfig>;
   templates: Record<string, CodeTemplate[]>;
@@ -55,6 +56,21 @@ export class CodeGenerator {
     this.config = this.loadConfig();
   }
 
+  // 获取当前环境应该使用的最小页数
+  private getMinPages(): number {
+    const isTestMode = process.env.NODE_ENV === 'test' || 
+                      process.env.NEXT_PUBLIC_APP_ENV === 'test' ||
+                      process.env.NEXT_PUBLIC_TEST_MODE === 'true';
+    
+    if (isTestMode && this.config.test_min_pages !== undefined) {
+      console.log(`测试模式：使用最小页数 ${this.config.test_min_pages}`);
+      return this.config.test_min_pages;
+    }
+    
+    console.log(`正常模式：使用最小页数 ${this.config.min_pages}`);
+    return this.config.min_pages;
+  }
+
   private loadConfig() {
     try {
       // 在实际项目中，这里应该从文件系统或API加载YAML配置
@@ -62,6 +78,7 @@ export class CodeGenerator {
       const yamlContent = `
 code_generation:
   min_pages: 30
+  test_min_pages: 1
   min_lines_per_page: 50
   
   categories:
@@ -311,7 +328,7 @@ code_generation:
     }
 
     const allTemplates = this.getAllTemplates();
-    const totalPages = Math.max(this.config.min_pages, allTemplates.length);
+    const totalPages = Math.max(this.getMinPages(), allTemplates.length);
     const codePages: CodePage[] = [];
     let currentIndex = 0;
 
@@ -338,7 +355,7 @@ code_generation:
 
       try {
         console.log(`开始生成第 ${pageIndex} 页: ${template.name}`);
-        const codePage = await this.generateSinglePage(softwareInfo, template, pageIndex);
+        const codePage = await this.generateSinglePage(softwareInfo, template, pageIndex, totalPages);
         codePages.push(codePage);
         console.log(`成功生成第 ${pageIndex} 页: ${template.name}`);
         
@@ -376,7 +393,8 @@ code_generation:
   private async generateSinglePage(
     softwareInfo: SoftwareInfo,
     template: CodeTemplate & { category: string },
-    pageIndex: number
+    pageIndex: number,
+    totalPages?: number
   ): Promise<CodePage> {
     if (!this.config) {
       throw new Error('配置文件未加载');
@@ -402,7 +420,12 @@ code_generation:
 请生成完整可运行的代码，包含注释和错误处理。`;
 
     try {
-      const generatedCode = await this.deepSeekClient.generateCode(userPrompt, systemPrompt);
+      const generatedCode = await this.deepSeekClient.generateCode(
+        userPrompt, 
+        systemPrompt, 
+        totalPages, 
+        pageIndex
+      );
       
       // 计算代码行数
       const lineCount = generatedCode.split('\n').length;

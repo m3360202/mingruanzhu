@@ -95,11 +95,11 @@ const nextConfigWithOutSentry = {
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
-  i18n: {
-    locales: ["en-US", "zh-CN"],
-    defaultLocale: "en-US",
-    localeDetection: false,
-  },
+  // i18n: {
+  //   locales: ["en-US", "zh-CN"],
+  //   defaultLocale: "",
+  //   localeDetection: false,
+  // },
   async redirects() {
     // Only enable redirects in production environment
     if (process.env.NODE_ENV === "production") {

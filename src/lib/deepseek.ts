@@ -89,7 +89,7 @@ class DeepSeekClient {
     throw new Error('Max retries exceeded');
   }
 
-  async generateCode(prompt: string, systemPrompt?: string): Promise<string> {
+  async generateCode(prompt: string, systemPrompt?: string, totalPages?: number, currentPage?: number): Promise<string> {
     return this.retryRequest(async () => {
       try {
         const messages: DeepSeekMessage[] = [];
@@ -101,9 +101,15 @@ class DeepSeekClient {
           });
         }
 
+        // 如果提供了页数信息，在用户消息中添加页数上下文
+        let enhancedPrompt = prompt;
+        if (totalPages && currentPage) {
+          enhancedPrompt = `${prompt}\n\n页数信息：当前生成第 ${currentPage} 页，总共需要生成 ${totalPages} 页代码。`;
+        }
+
         messages.push({
           role: 'user',
-          content: prompt
+          content: enhancedPrompt
         });
 
         const request: DeepSeekRequest = {
@@ -119,7 +125,9 @@ class DeepSeekClient {
           messagesCount: messages.length,
           temperature: request.temperature,
           max_tokens: request.max_tokens,
-          promptLength: prompt.length
+          promptLength: prompt.length,
+          totalPages: totalPages || '未指定',
+          currentPage: currentPage || '未指定'
         });
 
         const startTime = Date.now();

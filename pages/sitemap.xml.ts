@@ -19,7 +19,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
   const locales = ['en-US', 'zh-CN'];
   const routes = [
     '',
-    '/create'
+    '/dashboard'
   ];
 
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>

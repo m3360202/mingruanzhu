@@ -2,6 +2,7 @@
 code_generation:
   # 基本配置
   min_pages: 30
+  test_min_pages: 1  # 测试环境最小页数
   min_lines_per_page: 50
   
   # 代码分类和比例
