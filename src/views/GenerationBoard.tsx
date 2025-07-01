@@ -144,7 +144,7 @@ public class UserController {
 const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGenerate, shouldGenerate }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  
+
   const [activeTab, setActiveTab] = useState(0);
   const [codePages, setCodePages] = useState<CodePage[]>([]);
   const [documentContent, setDocumentContent] = useState<string>('');
@@ -167,10 +167,10 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
 
   // 获取当前环境的页数配置信息
   const getPageConfigInfo = () => {
-    const isTestMode = process.env.NODE_ENV === 'test' || 
-                      process.env.NEXT_PUBLIC_APP_ENV === 'test' ||
-                      process.env.NEXT_PUBLIC_TEST_MODE === 'true';
-    
+    const isTestMode = process.env.NODE_ENV === 'test' ||
+      process.env.NEXT_PUBLIC_APP_ENV === 'test' ||
+      process.env.NEXT_PUBLIC_TEST_MODE === 'true';
+
     if (isTestMode) {
       return {
         minPages: 1,
@@ -200,11 +200,11 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
 
     try {
       const pages = await codeGenerator.generateAllPages(softwareInfo, (progress) => {
-          setGenerationProgress(progress);
+        setGenerationProgress(progress);
       });
 
       setCodePages(pages);
-      
+
       const summary = codeGenerator.generateArchitectureSummary();
       setArchitectureSummary(summary);
 
@@ -215,10 +215,10 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
         status: 'generating',
         message: '正在生成技术说明书...'
       });
-      
+
       const documentation = await codeGenerator.generateDocumentation(softwareInfo, pages);
       setDocumentContent(documentation);
-      
+
       setGenerationProgress({
         current: pages.length,
         total: pages.length,
@@ -226,11 +226,11 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
         status: 'completed',
         message: `成功生成 ${pages.length} 个代码文件和技术说明书`
       });
-      
+
       setSnackbarMessage(`成功生成 ${pages.length} 个代码文件！所有代码具有完整的上下文关联性。`);
       setSnackbarSeverity('success');
       setSnackbarOpen(true);
-      
+
       onGenerate?.(pages);
     } catch (error) {
       console.error('生成失败:', error);
@@ -241,23 +241,23 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
         status: 'error',
         message: error instanceof Error ? error.message : '生成失败'
       });
-      
+
       setSnackbarMessage(`生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
     } finally {
-        setIsGenerating(false);
+      setIsGenerating(false);
     }
   };
 
   // 测试API连接
   const handleTestConnection = async () => {
     if (isTestingConnection) return;
-    
+
     setIsTestingConnection(true);
     try {
       const result = await codeGenerator.testApiConnection();
-      
+
       showSnackbar(
         `${result.message}${result.details ? ` - ${result.details}` : ''}`,
         result.status === 'success' ? 'success' : 'error'
@@ -288,12 +288,12 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
     try {
       // 创建简单的HTML文档，确保兼容性
       const pageHeader = `${softwareInfo.softwareName} ver ${softwareInfo.version}`;
-      
+
       // 生成目录
       const generateTableOfContents = () => {
         const sections = [
           '1. 软件概述',
-          '2. 系统架构', 
+          '2. 系统架构',
           '3. 功能模块',
           '4. 技术实现',
           '5. 数据库设计',
@@ -303,7 +303,7 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
           '9. 代码清单',
           '10. 附录'
         ];
-        
+
         // 动态计算页码，考虑实际内容长度
         let currentPage = 4; // 从第4页开始（封面、目录、项目信息后）
         return sections.map((section, index) => {
@@ -328,9 +328,9 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
       // 生成代码清单
       const generateCodeListing = () => {
         if (codePages.length === 0) return '';
-        
+
         let codeListing = '<div class="section-title">代码清单</div>';
-        
+
         codePages.forEach((page, index) => {
           codeListing += `
             <div class="page-break"></div>
@@ -346,7 +346,7 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
             </div>
           `;
         });
-        
+
         return codeListing;
       };
 
@@ -489,13 +489,13 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
 </html>`;
 
       // 创建Blob并下载
-      const blob = new Blob([htmlContent], { 
-        type: 'application/msword;charset=utf-8' 
+      const blob = new Blob([htmlContent], {
+        type: 'application/msword;charset=utf-8'
       });
-      
+
       const fileName = `${softwareInfo.softwareName}_v${softwareInfo.version}_完整说明书.doc`;
       saveAs(blob, fileName);
-      
+
       showSnackbar('完整说明书导出成功！', 'success');
     } catch (error) {
       console.error('导出失败:', error);
@@ -535,7 +535,7 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
 
     const categoryColors = {
       backend: 'success',
-      frontend: 'primary', 
+      frontend: 'primary',
       database: 'warning',
       config: 'info'
     } as const;
@@ -556,6 +556,11 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
               label={`${categoryNames[category as keyof typeof categoryNames]} (${count})`}
               color={categoryColors[category as keyof typeof categoryColors]}
               variant="outlined"
+              sx={{
+                '& .MuiChip-label': {
+                  fontSize: '14px'
+                }
+              }}
             />
           ))}
         </Box>
@@ -581,7 +586,7 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
                     label={categoryNames[page.category]}
                     color={categoryColors[page.category]}
                     size="small"
-                    sx={{ 
+                    sx={{
                       mr: 1,
                       '& .MuiChip-label': {
                         fontSize: '14px'
@@ -597,9 +602,9 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
                   {page.title}
                 </Typography>
 
-                <Typography 
-                  variant="body2" 
-                  color="text.secondary" 
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
                   sx={{ mb: 2, flex: 1 }}
                 >
                   {page.description}
@@ -650,7 +655,7 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
     // 简单的markdown解析
     const lines = architectureSummary.split('\n');
     const elements: JSX.Element[] = [];
-    
+
     lines.forEach((line, index) => {
       if (line.startsWith('# ')) {
         elements.push(
@@ -695,7 +700,7 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
   // 渲染技术说明书（简化版）
   const renderDocumentation = () => {
     if (!documentContent) {
-  return (
+      return (
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <DescriptionIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -704,13 +709,13 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             请先生成代码文件，系统会自动创建技术说明书
           </Typography>
-                <Button
-                  variant="outlined"
+          <Button
+            variant="outlined"
             onClick={() => setActiveTab(0)}
             startIcon={<CodeIcon />}
           >
             返回代码生成
-                </Button>
+          </Button>
         </Box>
       );
     }
@@ -733,11 +738,11 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
 
     try {
       const zip = new JSZip();
-      
+
       const getCategoryName = (category: string) => {
         const names = {
           backend: '后端代码',
-          frontend: '前端代码', 
+          frontend: '前端代码',
           database: '数据库',
           config: '配置文件'
         };
@@ -747,7 +752,7 @@ const GenerationBoard: React.FC<GenerationBoardProps> = ({ softwareInfo, onGener
       // 为每个代码文件创建单独的DOC文档
       codePages.forEach((page) => {
         const pageHeader = `${softwareInfo.softwareName} ver ${softwareInfo.version} - ${page.title}`;
-        
+
         const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -850,13 +855,13 @@ ${softwareInfo.functionalDescription}
 代码文件清单:
 ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName(page.category)}) - ${page.lineCount}行`).join('\n')}
 `;
-        zip.file('项目信息.txt', projectInfo);
-      
+      zip.file('项目信息.txt', projectInfo);
+
       // 生成并下载ZIP文件
       const content = await zip.generateAsync({ type: 'blob' });
       const fileName = `${softwareInfo.softwareName}_v${softwareInfo.version}_代码文档包.zip`;
       saveAs(content, fileName);
-      
+
       showSnackbar(`代码文档包导出成功！包含${codePages.length}个DOC文件`, 'success');
     } catch (error) {
       console.error('导出失败:', error);
@@ -874,22 +879,22 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
     <Card sx={{ width: '100%', height: '100%' }}>
       <CardContent sx={{ p: 0, height: '100%', '&:last-child': { pb: 0 } }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs 
-            value={activeTab} 
+          <Tabs
+            value={activeTab}
             onChange={(_, newValue) => setActiveTab(newValue)}
             variant={isMobile ? "scrollable" : "fullWidth"}
             scrollButtons="auto"
           >
-            <Tab 
+            <Tab
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '14px' }}>
                   <CodeIcon />
                   代码生成
                   {codePages.length > 0 && (
-                    <Chip 
-                      label={codePages.length} 
-                      size="small" 
-                      color="primary" 
+                    <Chip
+                      label={codePages.length}
+                      size="small"
+                      color="primary"
                       sx={{
                         minWidth: 20,
                         height: 16,
@@ -903,19 +908,19 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                     />
                   )}
                 </Box>
-              } 
+              }
             />
-            <Tab 
+            <Tab
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '14px' }}>
                   <AccountTreeIcon />
                   架构信息
                   {architectureSummary && (
-                            <Chip
-                      label="已生成" 
-                              size="small"
-                      color="success" 
-                      sx={{ 
+                    <Chip
+                      label="已生成"
+                      size="small"
+                      color="success"
+                      sx={{
                         minWidth: 20,
                         height: 16,
                         mr: 1,
@@ -928,19 +933,19 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                     />
                   )}
                 </Box>
-              } 
+              }
             />
-            <Tab 
+            <Tab
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '14px' }}>
                   <DescriptionIcon />
                   技术说明书
                   {documentContent && (
-                            <Chip 
-                      label="已生成" 
-                              size="small" 
-                      color="success" 
-                      sx={{ 
+                    <Chip
+                      label="已生成"
+                      size="small"
+                      color="success"
+                      sx={{
                         minWidth: 20,
                         height: 16,
                         mr: 1,
@@ -952,11 +957,11 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                       }}
                     />
                   )}
-                          </Box>
-                        }
+                </Box>
+              }
             />
           </Tabs>
-                            </Box>
+        </Box>
 
         <Box sx={{ height: 'calc(100% - 48px)', overflow: 'hidden' }}>
           {/* 代码生成标签页 */}
@@ -968,7 +973,7 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                   <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <CodeIcon color="primary" />
                     智能代码生成 - 带上下文关联
-          </Typography>
+                  </Typography>
                   {/* <Chip 
                     label={pageConfig.environmentText}
                     color={pageConfig.minPages === 1 ? "warning" : "success"}
@@ -982,7 +987,7 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                 </Typography>
 
                 {!isGenerating && codePages.length === 0 && (
-                <Button
+                  <Button
                     variant="contained"
                     size="large"
                     onClick={handleGenerate}
@@ -991,12 +996,12 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                     disabled={!softwareInfo}
                   >
                     生成项目代码及白皮书
-                </Button>
+                  </Button>
                 )}
-                
+
                 {!isGenerating && codePages.length === 0 && (
-                <Button
-                  variant="outlined"
+                  <Button
+                    variant="outlined"
                     size="large"
                     onClick={handleTestConnection}
                     startIcon={isTestingConnection ? <CircularProgress size={16} /> : <RefreshIcon />}
@@ -1004,7 +1009,7 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                     sx={{ mr: 2 }}
                   >
                     {isTestingConnection ? '测试中...' : '测试API连接'}
-                </Button>
+                  </Button>
                 )}
 
                 {isGenerating && (
@@ -1014,22 +1019,22 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                       <Typography variant="body2">
                         {generationProgress.message}
                       </Typography>
-                            </Box>
-                    <LinearProgress 
-                      variant="determinate" 
+                    </Box>
+                    <LinearProgress
+                      variant="determinate"
                       value={generationProgress.total > 0 ? (generationProgress.current / generationProgress.total) * 100 : 0}
                       sx={{ mb: 1 }}
                     />
                     <Typography variant="caption" color="text.secondary">
                       {generationProgress.current}/{generationProgress.total} - {generationProgress.currentPage}
                     </Typography>
-            </Box>
-          )}
+                  </Box>
+                )}
 
                 {!isGenerating && codePages.length > 0 && (
                   <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <Button
-              variant="contained"
+                    <Button
+                      variant="contained"
                       onClick={handleGenerate}
                       startIcon={<RefreshIcon />}
                       disabled={!softwareInfo}
@@ -1067,15 +1072,15 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                       disabled={codePages.length === 0}
                     >
                       下载代码文档ZIP
-            </Button>
-          </Box>
+                    </Button>
+                  </Box>
                 )}
-        </Box>
+              </Box>
 
               {/* 代码页面列表 */}
               <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
                 {renderCodePages()}
-        </Box>
+              </Box>
             </Box>
           )}
 
@@ -1086,15 +1091,15 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                   <AccountTreeIcon color="primary" />
                   项目架构信息
-                  </Typography>
+                </Typography>
                 <Typography variant="body2" color="text.secondary">
                   以下是生成代码的架构信息和模块关联性，确保所有代码文件具有统一的结构和依赖关系。
-                  </Typography>
-                </Box>
+                </Typography>
+              </Box>
 
               <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
                 {renderArchitectureSummary()}
-                          </Box>
+              </Box>
             </Box>
           )}
 
@@ -1106,7 +1111,7 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                   <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <DescriptionIcon color="primary" />
                     技术说明书
-                    </Typography>
+                  </Typography>
                   {documentContent && (
                     <Button
                       variant="contained"
@@ -1118,11 +1123,11 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
                       导出DOC文档
                     </Button>
                   )}
-                  </Box>
+                </Box>
                 <Typography variant="body2" color="text.secondary">
                   基于生成的代码自动创建的详细技术说明书，符合软件著作权申报要求。
-                  </Typography>
-                </Box>
+                </Typography>
+              </Box>
 
               <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
                 {renderDocumentation()}
@@ -1133,8 +1138,8 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
       </CardContent>
 
       {/* 代码查看对话框 */}
-      <Dialog 
-        open={dialogOpen} 
+      <Dialog
+        open={dialogOpen}
         onClose={handleCloseDialog}
         maxWidth="lg"
         fullWidth
@@ -1143,33 +1148,38 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
         }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CodeIcon />
+          <CodeIcon />
           {selectedPage?.title}
-            <Chip 
+          <Chip
             label={`${selectedPage?.lineCount} 行`}
-              size="small" 
+            size="small"
             color="primary"
-            sx={{ ml: 'auto' }}
-            />
+            sx={{
+              ml: 'auto',
+              '& .MuiChip-label': {
+                fontSize: '14px'
+              }
+            }}
+          />
         </DialogTitle>
         <DialogContent dividers sx={{ p: 2 }}>
           {selectedPage && (
-          <Box 
-            component="pre" 
-            sx={{ 
+            <Box
+              component="pre"
+              sx={{
                 fontFamily: 'monospace',
                 fontSize: '14px',
                 lineHeight: 1.5,
-              whiteSpace: 'pre-wrap',
+                whiteSpace: 'pre-wrap',
                 margin: 0,
                 backgroundColor: theme.palette.grey[50],
                 padding: 2,
-              borderRadius: 1,
+                borderRadius: 1,
                 overflow: 'auto'
-            }}
-          >
+              }}
+            >
               {selectedPage.content}
-          </Box>
+            </Box>
           )}
         </DialogContent>
         <DialogActions>
@@ -1184,8 +1194,8 @@ ${codePages.map((page, index) => `${index + 1}. ${page.title} (${getCategoryName
         onClose={() => setSnackbarOpen(false)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={() => setSnackbarOpen(false)} 
+        <Alert
+          onClose={() => setSnackbarOpen(false)}
           severity={snackbarSeverity}
           sx={{ width: '100%' }}
         >
