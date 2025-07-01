@@ -67,8 +67,8 @@ class DeepSeekClient {
   // 重试机制
   private async retryRequest<T>(
     requestFn: () => Promise<T>, 
-    maxRetries: number = 1, // 减少重试次数避免过长等待
-    delay: number = 5000 // 增加延迟到5秒
+    maxRetries: number = 2, // 增加重试次数到2次
+    delay: number = 3000 // 减少延迟到3秒
   ): Promise<T> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -78,12 +78,22 @@ class DeepSeekClient {
         console.error(`尝试 ${attempt} 失败:`, error instanceof Error ? error.message : error);
         
         if (attempt === maxRetries) {
+          console.error('已达到最大重试次数，抛出错误');
           throw error;
+        }
+        
+        // 根据错误类型决定是否重试
+        if (axios.isAxiosError(error)) {
+          // 对于某些错误类型，不进行重试
+          if (error.response?.status === 401 || error.response?.status === 400) {
+            console.log('认证或参数错误，不进行重试');
+            throw error;
+          }
         }
         
         console.log(`等待 ${delay}ms 后重试...`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 1.2; // 轻微增加延迟
+        delay *= 1.5; // 增加延迟倍数
       }
     }
     throw new Error('Max retries exceeded');
@@ -137,9 +147,11 @@ class DeepSeekClient {
         console.log(`API请求完成，耗时: ${endTime - startTime}ms`);
         
         if (response.data.choices && response.data.choices.length > 0) {
-          const content = response.data.choices[0].message.content;
-          console.log(`生成内容长度: ${content.length} 字符`);
-          return content;
+          const rawContent = response.data.choices[0].message.content;
+          // 清理响应内容，去掉多余的说明文字
+          const cleanedContent = this.cleanCodeResponse(rawContent);
+          console.log(`生成内容长度: ${cleanedContent.length} 字符`);
+          return cleanedContent;
         } else {
           throw new Error('DeepSeek API返回空响应');
         }
@@ -165,7 +177,70 @@ class DeepSeekClient {
         }
         throw new Error('DeepSeek API请求失败，请检查网络连接和API配置');
       }
-    }, 0); // 不重试，直接失败并使用fallback
+    }, 2); // 改为重试2次
+  }
+
+  // 新增：清理代码响应内容
+  private cleanCodeResponse(rawContent: string): string {
+    let content = rawContent.trim();
+    
+    // 移除markdown代码块标记
+    content = content.replace(/^```[\w]*\n?/gm, '');
+    content = content.replace(/\n?```$/gm, '');
+    
+    // 移除常见的说明性前缀
+    const prefixesToRemove = [
+      /^以下是.*?代码[:：]\s*/i,
+      /^这是.*?代码[:：]\s*/i,
+      /^根据.*?生成的代码[:：]\s*/i,
+      /^为.*?生成的代码[:：]\s*/i,
+      /^代码如下[:：]\s*/i,
+      /^以下是完整的.*?代码[:：]\s*/i,
+      /^这里是.*?代码[:：]\s*/i,
+      /^下面是.*?代码[:：]\s*/i,
+      /^以下是.*?的实现[:：]\s*/i,
+      /^这是.*?的实现[:：]\s*/i
+    ];
+    
+    for (const prefix of prefixesToRemove) {
+      content = content.replace(prefix, '');
+    }
+    
+    // 移除常见的说明性后缀
+    const suffixesToRemove = [
+      /\n\n这个代码.*$/i,
+      /\n\n以上代码.*$/i,
+      /\n\n代码说明.*$/i,
+      /\n\n注意事项.*$/i,
+      /\n\n使用方法.*$/i,
+      /\n\n该代码.*$/i
+    ];
+    
+    for (const suffix of suffixesToRemove) {
+      content = content.replace(suffix, '');
+    }
+    
+    // 移除多余的空行（保留适当的空行）
+    content = content.replace(/\n{4,}/g, '\n\n\n');
+    
+    // 如果内容以说明性文字开头，尝试找到实际代码开始的位置
+    const codeStartPatterns = [
+      /^[^\/\*#\n]*\n(\/\*|\/\/|#|package|import|using|from|class|interface|function|def|var|let|const)/m,
+      /^[^<\n]*\n(<\?|<!|<html|<script)/m,  // HTML/XML
+      /^[^{}\n]*\n\{/m,  // JSON或配置文件
+      /^[^-\n]*\n(-{3,}|CREATE|DROP|SELECT|INSERT)/mi  // SQL
+    ];
+    
+    for (const pattern of codeStartPatterns) {
+      const match = content.match(pattern);
+      if (match && match.index !== undefined) {
+        const actualCodeStart = match.index + match[0].indexOf(match[1]);
+        content = content.substring(actualCodeStart);
+        break;
+      }
+    }
+    
+    return content.trim();
   }
 
   async generateDocumentation(prompt: string, systemPrompt?: string): Promise<string> {
@@ -251,6 +326,93 @@ class DeepSeekClient {
       hasApiKey: !!this.apiKey,
       baseURL: this.baseURL
     };
+  }
+
+  // 新增：API连接诊断
+  async diagnoseConnection(): Promise<{
+    status: 'success' | 'error';
+    message: string;
+    details?: string;
+  }> {
+    try {
+      console.log('开始诊断DeepSeek API连接...');
+      
+      // 检查API密钥
+      if (!this.apiKey) {
+        return {
+          status: 'error',
+          message: 'API密钥未配置',
+          details: '请在环境变量中设置 NEXT_PUBLIC_DEEPSEEK_KEY'
+        };
+      }
+
+      // 测试简单的API调用
+      const testRequest: DeepSeekRequest = {
+        model: 'deepseek-chat',
+        messages: [
+          {
+            role: 'user',
+            content: 'Hello, please respond with just "OK".'
+          }
+        ],
+        max_tokens: 10,
+        temperature: 0.1
+      };
+
+      console.log('发送测试请求...');
+      const startTime = Date.now();
+      const response = await this.axiosInstance.post<DeepSeekResponse>('/v1/chat/completions', testRequest);
+      const endTime = Date.now();
+
+      if (response.data.choices && response.data.choices.length > 0) {
+        return {
+          status: 'success',
+          message: '✅ API连接正常',
+          details: `响应时间: ${endTime - startTime}ms, 内容: "${response.data.choices[0].message.content.trim()}"`
+        };
+      } else {
+        return {
+          status: 'error',
+          message: '❌ API返回空响应',
+          details: 'API调用成功但未返回有效内容'
+        };
+      }
+    } catch (error) {
+      console.error('API诊断失败:', error);
+      
+      let errorMessage = '❌ API连接失败';
+      let errorDetails = '';
+
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          errorMessage = '❌ API认证失败';
+          errorDetails = 'API密钥无效或已过期，请检查 NEXT_PUBLIC_DEEPSEEK_KEY';
+        } else if (error.response?.status === 429) {
+          errorMessage = '❌ API请求频率限制';
+          errorDetails = '请求过于频繁，请稍后重试';
+        } else if (error.response?.status === 500) {
+          errorMessage = '❌ API服务器错误';
+          errorDetails = 'DeepSeek服务器内部错误，请稍后重试';
+        } else if (error.code === 'ECONNABORTED') {
+          errorMessage = '❌ API请求超时';
+          errorDetails = `请求超时 (${this.axiosInstance.defaults.timeout}ms)，请检查网络连接`;
+        } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+          errorMessage = '❌ 无法连接到API服务器';
+          errorDetails = '请检查网络连接和防火墙设置';
+        } else {
+          errorMessage = '❌ API请求失败';
+          errorDetails = `状态码: ${error.response?.status}, 错误: ${error.response?.statusText || error.message}`;
+        }
+      } else {
+        errorDetails = error instanceof Error ? error.message : '未知错误';
+      }
+
+      return {
+        status: 'error',
+        message: errorMessage,
+        details: errorDetails
+      };
+    }
   }
 }
 

@@ -204,7 +204,16 @@ const SideBar: React.FC<SideBarProps> = ({ onInfoChange, onGenerate }) => {
             renderValue={(selected) => (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                 {selected.map((value) => (
-                  <Chip key={value} label={value} size="small" />
+                  <Chip 
+                    key={value} 
+                    label={value} 
+                    size="small" 
+                    sx={{
+                      '& .MuiChip-label': {
+                        fontSize: '14px'
+                      }
+                    }}
+                  />
                 ))}
               </Box>
             )}
@@ -399,7 +408,7 @@ const SideBar: React.FC<SideBarProps> = ({ onInfoChange, onGenerate }) => {
           required
         />
 
-        <Button
+        {/* <Button
           fullWidth
           variant="contained"
           size="large"
@@ -415,7 +424,7 @@ const SideBar: React.FC<SideBarProps> = ({ onInfoChange, onGenerate }) => {
           disabled={!softwareInfo.softwareName || !softwareInfo.developer || !softwareInfo.functionalDescription}
         >
           生成项目代码及白皮书
-        </Button>
+        </Button> */}
       </Paper>
     </Box>
   );

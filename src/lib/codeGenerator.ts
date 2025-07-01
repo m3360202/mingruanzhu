@@ -47,13 +47,84 @@ export interface GenerationProgress {
   message: string;
 }
 
+// 新增：代码上下文管理接口
+interface CodeContext {
+  // 项目架构信息
+  projectStructure: {
+    packageName: string;
+    mainClassName: string;
+    databaseSchema: string;
+    apiPrefix: string;
+  };
+  
+  // 已生成的代码摘要
+  generatedSummaries: Array<{
+    title: string;
+    category: string;
+    mainClasses: string[];
+    mainMethods: string[];
+    dependencies: string[];
+    exports: string[];
+  }>;
+  
+  // 共享的数据模型
+  sharedModels: Array<{
+    name: string;
+    fields: string[];
+    type: 'entity' | 'dto' | 'enum';
+  }>;
+  
+  // API接口定义
+  apiEndpoints: Array<{
+    path: string;
+    method: string;
+    description: string;
+  }>;
+  
+  // 数据库表结构
+  databaseTables: Array<{
+    name: string;
+    fields: string[];
+    relationships: string[];
+  }>;
+}
+
 export class CodeGenerator {
   private deepSeekClient: DeepSeekClient;
   private config: CodeGenerationConfig;
+  private codeContext: CodeContext; // 新增：上下文管理
 
   constructor() {
     this.deepSeekClient = new DeepSeekClient();
     this.config = this.loadConfig();
+    this.codeContext = this.initializeContext();
+  }
+
+  // 新增：初始化代码上下文
+  private initializeContext(): CodeContext {
+    return {
+      projectStructure: {
+        packageName: 'com.example.app',
+        mainClassName: 'Application',
+        databaseSchema: 'app_db',
+        apiPrefix: '/api/v1'
+      },
+      generatedSummaries: [],
+      sharedModels: [],
+      apiEndpoints: [],
+      databaseTables: []
+    };
+  }
+
+  // 新增：更新项目结构信息
+  private updateProjectStructure(softwareInfo: SoftwareInfo) {
+    const safeName = softwareInfo.softwareName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    this.codeContext.projectStructure = {
+      packageName: `com.${safeName}.app`,
+      mainClassName: `${safeName.charAt(0).toUpperCase() + safeName.slice(1)}Application`,
+      databaseSchema: `${safeName}_db`,
+      apiPrefix: '/api/v1'
+    };
   }
 
   // 获取当前环境应该使用的最小页数
@@ -327,22 +398,34 @@ code_generation:
       throw new Error('配置文件未加载');
     }
 
+    // 重置并初始化上下文
+    this.codeContext = this.initializeContext();
+    this.updateProjectStructure(softwareInfo);
+
     const allTemplates = this.getAllTemplates();
     const totalPages = Math.max(this.getMinPages(), allTemplates.length);
     const codePages: CodePage[] = [];
-    let currentIndex = 0;
 
     onProgress?.({
       current: 0,
       total: totalPages,
       currentPage: '准备生成...',
       status: 'preparing',
-      message: '正在准备代码生成任务...'
+      message: '正在准备代码生成任务和上下文信息...'
     });
 
-    // 逐个生成代码页面，避免并发导致的超时问题
-    for (let i = 0; i < allTemplates.length; i++) {
-      const template = allTemplates[i];
+    // 第一步：生成项目架构概览
+    await this.generateProjectArchitecture(softwareInfo);
+
+    // 按优先级和依赖关系排序模板
+    const sortedTemplates = this.sortTemplatesByDependency(allTemplates);
+
+    let successCount = 0;
+    let fallbackCount = 0;
+
+    // 逐个生成代码页面，每次都传递完整的上下文
+    for (let i = 0; i < sortedTemplates.length; i++) {
+      const template = sortedTemplates[i];
       const pageIndex = i + 1;
       
       onProgress?.({
@@ -355,42 +438,470 @@ code_generation:
 
       try {
         console.log(`开始生成第 ${pageIndex} 页: ${template.name}`);
-        const codePage = await this.generateSinglePage(softwareInfo, template, pageIndex, totalPages);
+        const codePage = await this.generateSinglePageWithContext(
+          softwareInfo, 
+          template, 
+          pageIndex, 
+          totalPages
+        );
+        
         codePages.push(codePage);
-        console.log(`成功生成第 ${pageIndex} 页: ${template.name}`);
+        successCount++;
+        
+        // 重要：更新上下文信息
+        await this.updateContextFromGeneratedCode(codePage, template);
+        
+        console.log(`✅ 成功生成第 ${pageIndex} 页: ${template.name}`);
         
         // 每个页面生成后增加延迟，避免API频率限制
-        if (i < allTemplates.length - 1) {
+        if (i < sortedTemplates.length - 1) {
           console.log(`等待 ${this.config.generation.delay_between_batches}ms 后继续...`);
           await new Promise(resolve => setTimeout(resolve, this.config.generation.delay_between_batches));
         }
       } catch (error) {
-        console.error(`生成第 ${pageIndex} 页失败: ${template.name}`, error);
+        console.error(`❌ 生成第 ${pageIndex} 页失败: ${template.name}`, error);
+        
         // 生成失败时使用fallback页面
         const fallbackPage = this.createFallbackPage(template, pageIndex);
         codePages.push(fallbackPage);
-        console.log(`使用fallback生成第 ${pageIndex} 页: ${template.name}`);
+        fallbackCount++;
+        
+        console.log(`🔄 使用fallback生成第 ${pageIndex} 页: ${template.name}`);
+        
+        // 即使使用fallback，也要更新上下文（使用简化的信息）
+        await this.updateContextFromFallbackCode(fallbackPage, template);
         
         // 失败后稍微延长等待时间
-        if (i < allTemplates.length - 1) {
+        if (i < sortedTemplates.length - 1) {
           await new Promise(resolve => setTimeout(resolve, this.config.generation.delay_between_batches * 1.5));
         }
       }
     }
+
+    const statusMessage = successCount === sortedTemplates.length 
+      ? `🎉 成功生成 ${codePages.length} 个代码文件，所有代码具有完整的上下文关联性`
+      : `✅ 生成完成：${successCount} 个AI生成，${fallbackCount} 个模板生成，共 ${codePages.length} 个文件`;
 
     onProgress?.({
       current: totalPages,
       total: totalPages,
       currentPage: '完成',
       status: 'completed',
-      message: `成功生成 ${codePages.length} 个代码文件`
+      message: statusMessage
     });
 
     return codePages;
   }
 
-  // 生成单个代码页面
-  private async generateSinglePage(
+  // 新增：生成项目架构概览
+  private async generateProjectArchitecture(softwareInfo: SoftwareInfo) {
+    const architecturePrompt = `
+请为"${softwareInfo.softwareName}"项目设计完整的架构方案，重要：必须使用 ${softwareInfo.developmentLanguage} 语言。
+
+软件信息：
+- 名称: ${softwareInfo.softwareName}
+- 开发语言: ${softwareInfo.developmentLanguage} （必须严格使用此语言）
+- 数据库: ${softwareInfo.database}
+- 平台: ${softwareInfo.platforms.join(', ')}
+- 功能描述: ${softwareInfo.functionalDescription}
+
+请基于 ${softwareInfo.developmentLanguage} 语言特性提供以下架构信息：
+1. 核心数据模型（使用${softwareInfo.developmentLanguage}的类名和字段命名规范）
+2. 主要API接口（符合${softwareInfo.developmentLanguage}的REST API设计）
+3. 数据库表结构（表名、主要字段、关系）
+4. 项目包结构和主要类名（遵循${softwareInfo.developmentLanguage}的包命名规范）
+5. 技术栈和依赖关系（使用${softwareInfo.developmentLanguage}生态的框架和库）
+
+请以JSON格式返回，确保所有类名、方法名、包名都符合${softwareInfo.developmentLanguage}的命名规范：
+    `;
+
+    try {
+      const architectureResponse = await this.deepSeekClient.generateCode(
+        architecturePrompt,
+        `你是一个专业的软件架构师，请严格使用${softwareInfo.developmentLanguage}语言设计完整且一致的项目架构。所有命名和结构都必须符合${softwareInfo.developmentLanguage}的标准规范。`
+      );
+
+      // 解析架构信息并更新上下文
+      this.parseAndUpdateArchitecture(architectureResponse, softwareInfo);
+    } catch (error) {
+      console.warn('架构生成失败，使用默认架构:', error);
+      this.generateDefaultArchitecture(softwareInfo);
+    }
+  }
+
+  // 新增：解析架构信息
+  private parseAndUpdateArchitecture(architectureResponse: string, softwareInfo: SoftwareInfo) {
+    try {
+      // 尝试提取JSON部分
+      const jsonMatch = architectureResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const architecture = JSON.parse(jsonMatch[0]);
+        
+        // 更新共享模型
+        if (architecture.models) {
+          this.codeContext.sharedModels = architecture.models.map((model: any) => ({
+            name: model.name,
+            fields: model.fields || [],
+            type: model.type || 'entity'
+          }));
+        }
+
+        // 更新API接口
+        if (architecture.apis) {
+          this.codeContext.apiEndpoints = architecture.apis.map((api: any) => ({
+            path: api.path,
+            method: api.method,
+            description: api.description
+          }));
+        }
+
+        // 更新数据库表
+        if (architecture.tables) {
+          this.codeContext.databaseTables = architecture.tables.map((table: any) => ({
+            name: table.name,
+            fields: table.fields || [],
+            relationships: table.relationships || []
+          }));
+        }
+      }
+    } catch (error) {
+      console.warn('架构解析失败，使用默认架构:', error);
+      this.generateDefaultArchitecture(softwareInfo);
+    }
+  }
+
+  // 新增：生成默认架构
+  private generateDefaultArchitecture(softwareInfo: SoftwareInfo) {
+    const safeName = softwareInfo.softwareName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const language = softwareInfo.developmentLanguage.toLowerCase();
+    
+    // 根据开发语言生成不同的默认架构
+    if (language.includes('java')) {
+      this.generateJavaDefaultArchitecture(safeName, softwareInfo);
+    } else if (language.includes('python')) {
+      this.generatePythonDefaultArchitecture(safeName, softwareInfo);
+    } else if (language.includes('javascript') || language.includes('typescript') || language.includes('node')) {
+      this.generateJavaScriptDefaultArchitecture(safeName, softwareInfo);
+    } else if (language.includes('c#') || language.includes('csharp')) {
+      this.generateCSharpDefaultArchitecture(safeName, softwareInfo);
+    } else if (language.includes('go') || language.includes('golang')) {
+      this.generateGoDefaultArchitecture(safeName, softwareInfo);
+    } else {
+      // 通用默认架构
+      this.generateGenericDefaultArchitecture(safeName, softwareInfo);
+    }
+  }
+
+  // Java默认架构
+  private generateJavaDefaultArchitecture(safeName: string, softwareInfo: SoftwareInfo) {
+    this.codeContext.projectStructure = {
+      packageName: `com.${safeName}.app`,
+      mainClassName: `${safeName.charAt(0).toUpperCase() + safeName.slice(1)}Application`,
+      databaseSchema: `${safeName}_db`,
+      apiPrefix: '/api/v1'
+    };
+
+    this.codeContext.sharedModels = [
+      {
+        name: 'User',
+        fields: ['private Long id', 'private String username', 'private String email', 'private LocalDateTime createdAt'],
+        type: 'entity'
+      },
+      {
+        name: 'Role',
+        fields: ['private Long id', 'private String name', 'private String description'],
+        type: 'entity'
+      },
+      {
+        name: 'UserDto',
+        fields: ['private Long id', 'private String username', 'private String email'],
+        type: 'dto'
+      }
+    ];
+
+    this.codeContext.apiEndpoints = [
+      { path: '/api/v1/users', method: 'GET', description: '获取用户列表' },
+      { path: '/api/v1/users', method: 'POST', description: '创建用户' },
+      { path: '/api/v1/users/{id}', method: 'PUT', description: '更新用户' },
+      { path: '/api/v1/users/{id}', method: 'DELETE', description: '删除用户' }
+    ];
+
+    this.codeContext.databaseTables = [
+      {
+        name: 'users',
+        fields: ['id BIGINT PRIMARY KEY', 'username VARCHAR(50)', 'email VARCHAR(100)', 'password VARCHAR(255)', 'created_at TIMESTAMP'],
+        relationships: ['many-to-many: roles']
+      },
+      {
+        name: 'roles',
+        fields: ['id BIGINT PRIMARY KEY', 'name VARCHAR(50)', 'description TEXT'],
+        relationships: ['many-to-many: users']
+      }
+    ];
+  }
+
+  // Python默认架构
+  private generatePythonDefaultArchitecture(safeName: string, softwareInfo: SoftwareInfo) {
+    this.codeContext.projectStructure = {
+      packageName: safeName,
+      mainClassName: `${safeName.charAt(0).toUpperCase() + safeName.slice(1)}App`,
+      databaseSchema: `${safeName}_db`,
+      apiPrefix: '/api/v1'
+    };
+
+    this.codeContext.sharedModels = [
+      {
+        name: 'User',
+        fields: ['id: int', 'username: str', 'email: str', 'created_at: datetime'],
+        type: 'entity'
+      },
+      {
+        name: 'Role',
+        fields: ['id: int', 'name: str', 'description: str'],
+        type: 'entity'
+      },
+      {
+        name: 'UserSchema',
+        fields: ['id: int', 'username: str', 'email: str'],
+        type: 'dto'
+      }
+    ];
+
+    this.codeContext.apiEndpoints = [
+      { path: '/api/v1/users', method: 'GET', description: '获取用户列表' },
+      { path: '/api/v1/users', method: 'POST', description: '创建用户' },
+      { path: '/api/v1/users/{user_id}', method: 'PUT', description: '更新用户' },
+      { path: '/api/v1/users/{user_id}', method: 'DELETE', description: '删除用户' }
+    ];
+
+    this.codeContext.databaseTables = [
+      {
+        name: 'users',
+        fields: ['id INTEGER PRIMARY KEY', 'username VARCHAR(50)', 'email VARCHAR(100)', 'password VARCHAR(255)', 'created_at TIMESTAMP'],
+        relationships: ['many-to-many: roles']
+      },
+      {
+        name: 'roles',
+        fields: ['id INTEGER PRIMARY KEY', 'name VARCHAR(50)', 'description TEXT'],
+        relationships: ['many-to-many: users']
+      }
+    ];
+  }
+
+  // JavaScript/TypeScript默认架构
+  private generateJavaScriptDefaultArchitecture(safeName: string, softwareInfo: SoftwareInfo) {
+    this.codeContext.projectStructure = {
+      packageName: safeName,
+      mainClassName: `${safeName.charAt(0).toUpperCase() + safeName.slice(1)}App`,
+      databaseSchema: `${safeName}_db`,
+      apiPrefix: '/api/v1'
+    };
+
+    this.codeContext.sharedModels = [
+      {
+        name: 'User',
+        fields: ['id: number', 'username: string', 'email: string', 'createdAt: Date'],
+        type: 'entity'
+      },
+      {
+        name: 'Role',
+        fields: ['id: number', 'name: string', 'description: string'],
+        type: 'entity'
+      },
+      {
+        name: 'UserInterface',
+        fields: ['id: number', 'username: string', 'email: string'],
+        type: 'dto'
+      }
+    ];
+
+    this.codeContext.apiEndpoints = [
+      { path: '/api/v1/users', method: 'GET', description: '获取用户列表' },
+      { path: '/api/v1/users', method: 'POST', description: '创建用户' },
+      { path: '/api/v1/users/:id', method: 'PUT', description: '更新用户' },
+      { path: '/api/v1/users/:id', method: 'DELETE', description: '删除用户' }
+    ];
+
+    this.codeContext.databaseTables = [
+      {
+        name: 'users',
+        fields: ['id INTEGER PRIMARY KEY', 'username VARCHAR(50)', 'email VARCHAR(100)', 'password VARCHAR(255)', 'created_at TIMESTAMP'],
+        relationships: ['many-to-many: roles']
+      },
+      {
+        name: 'roles',
+        fields: ['id INTEGER PRIMARY KEY', 'name VARCHAR(50)', 'description TEXT'],
+        relationships: ['many-to-many: users']
+      }
+    ];
+  }
+
+  // C#默认架构
+  private generateCSharpDefaultArchitecture(safeName: string, softwareInfo: SoftwareInfo) {
+    const pascalName = safeName.charAt(0).toUpperCase() + safeName.slice(1);
+    
+    this.codeContext.projectStructure = {
+      packageName: `${pascalName}.App`,
+      mainClassName: `${pascalName}Application`,
+      databaseSchema: `${pascalName}Db`,
+      apiPrefix: '/api/v1'
+    };
+
+    this.codeContext.sharedModels = [
+      {
+        name: 'User',
+        fields: ['public int Id { get; set; }', 'public string Username { get; set; }', 'public string Email { get; set; }', 'public DateTime CreatedAt { get; set; }'],
+        type: 'entity'
+      },
+      {
+        name: 'Role',
+        fields: ['public int Id { get; set; }', 'public string Name { get; set; }', 'public string Description { get; set; }'],
+        type: 'entity'
+      },
+      {
+        name: 'UserDto',
+        fields: ['public int Id { get; set; }', 'public string Username { get; set; }', 'public string Email { get; set; }'],
+        type: 'dto'
+      }
+    ];
+
+    this.codeContext.apiEndpoints = [
+      { path: '/api/v1/users', method: 'GET', description: '获取用户列表' },
+      { path: '/api/v1/users', method: 'POST', description: '创建用户' },
+      { path: '/api/v1/users/{id}', method: 'PUT', description: '更新用户' },
+      { path: '/api/v1/users/{id}', method: 'DELETE', description: '删除用户' }
+    ];
+
+    this.codeContext.databaseTables = [
+      {
+        name: 'Users',
+        fields: ['Id INT PRIMARY KEY', 'Username NVARCHAR(50)', 'Email NVARCHAR(100)', 'Password NVARCHAR(255)', 'CreatedAt DATETIME'],
+        relationships: ['many-to-many: Roles']
+      },
+      {
+        name: 'Roles',
+        fields: ['Id INT PRIMARY KEY', 'Name NVARCHAR(50)', 'Description NTEXT'],
+        relationships: ['many-to-many: Users']
+      }
+    ];
+  }
+
+  // Go默认架构
+  private generateGoDefaultArchitecture(safeName: string, softwareInfo: SoftwareInfo) {
+    this.codeContext.projectStructure = {
+      packageName: safeName,
+      mainClassName: 'main',
+      databaseSchema: `${safeName}_db`,
+      apiPrefix: '/api/v1'
+    };
+
+    this.codeContext.sharedModels = [
+      {
+        name: 'User',
+        fields: ['ID uint `json:"id"`', 'Username string `json:"username"`', 'Email string `json:"email"`', 'CreatedAt time.Time `json:"created_at"`'],
+        type: 'entity'
+      },
+      {
+        name: 'Role',
+        fields: ['ID uint `json:"id"`', 'Name string `json:"name"`', 'Description string `json:"description"`'],
+        type: 'entity'
+      },
+      {
+        name: 'UserResponse',
+        fields: ['ID uint `json:"id"`', 'Username string `json:"username"`', 'Email string `json:"email"`'],
+        type: 'dto'
+      }
+    ];
+
+    this.codeContext.apiEndpoints = [
+      { path: '/api/v1/users', method: 'GET', description: '获取用户列表' },
+      { path: '/api/v1/users', method: 'POST', description: '创建用户' },
+      { path: '/api/v1/users/{id}', method: 'PUT', description: '更新用户' },
+      { path: '/api/v1/users/{id}', method: 'DELETE', description: '删除用户' }
+    ];
+
+    this.codeContext.databaseTables = [
+      {
+        name: 'users',
+        fields: ['id INTEGER PRIMARY KEY', 'username VARCHAR(50)', 'email VARCHAR(100)', 'password VARCHAR(255)', 'created_at TIMESTAMP'],
+        relationships: ['many-to-many: roles']
+      },
+      {
+        name: 'roles',
+        fields: ['id INTEGER PRIMARY KEY', 'name VARCHAR(50)', 'description TEXT'],
+        relationships: ['many-to-many: users']
+      }
+    ];
+  }
+
+  // 通用默认架构
+  private generateGenericDefaultArchitecture(safeName: string, softwareInfo: SoftwareInfo) {
+    this.codeContext.projectStructure = {
+      packageName: safeName,
+      mainClassName: `${safeName.charAt(0).toUpperCase() + safeName.slice(1)}App`,
+      databaseSchema: `${safeName}_db`,
+      apiPrefix: '/api/v1'
+    };
+
+    this.codeContext.sharedModels = [
+      {
+        name: 'User',
+        fields: ['id', 'username', 'email', 'createdAt'],
+        type: 'entity'
+      },
+      {
+        name: 'Role',
+        fields: ['id', 'name', 'description'],
+        type: 'entity'
+      }
+    ];
+
+    this.codeContext.apiEndpoints = [
+      { path: '/api/v1/users', method: 'GET', description: '获取用户列表' },
+      { path: '/api/v1/users', method: 'POST', description: '创建用户' },
+      { path: '/api/v1/users/{id}', method: 'PUT', description: '更新用户' },
+      { path: '/api/v1/users/{id}', method: 'DELETE', description: '删除用户' }
+    ];
+
+    this.codeContext.databaseTables = [
+      {
+        name: 'users',
+        fields: ['id', 'username', 'email', 'password', 'created_at'],
+        relationships: ['many-to-many: roles']
+      },
+      {
+        name: 'roles',
+        fields: ['id', 'name', 'description'],
+        relationships: ['many-to-many: users']
+      }
+    ];
+  }
+
+  // 新增：按依赖关系排序模板
+  private sortTemplatesByDependency(templates: Array<CodeTemplate & { category: string }>): Array<CodeTemplate & { category: string }> {
+    // 定义生成顺序：数据库 -> 后端模型 -> 后端服务 -> 后端控制器 -> 前端 -> 配置
+    const priorityOrder = {
+      'database': 1,
+      'backend': 2,
+      'frontend': 3,
+      'config': 4
+    };
+
+    return templates.sort((a, b) => {
+      const priorityA = priorityOrder[a.category as keyof typeof priorityOrder] || 5;
+      const priorityB = priorityOrder[b.category as keyof typeof priorityOrder] || 5;
+      
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+      
+      // 同类别内按优先级排序
+      return a.priority - b.priority;
+    });
+  }
+
+  // 重构：带上下文的单页生成
+  private async generateSinglePageWithContext(
     softwareInfo: SoftwareInfo,
     template: CodeTemplate & { category: string },
     pageIndex: number,
@@ -400,29 +911,16 @@ code_generation:
       throw new Error('配置文件未加载');
     }
 
-    const systemPrompt = this.config.prompts.system_prompt.replace('{min_lines}', template.min_lines.toString());
+    // 构建包含上下文的系统提示词
+    const contextualSystemPrompt = this.buildContextualSystemPrompt(template, softwareInfo);
     
-    // 简化提示词，减少token使用
-    const userPrompt = `请为"${softwareInfo.softwareName}"生成"${template.name}"模块的代码。
-
-软件信息：
-- 名称: ${softwareInfo.softwareName}
-- 语言: ${softwareInfo.developmentLanguage}
-- 数据库: ${softwareInfo.database}
-- 平台: ${softwareInfo.platforms.join(', ')}
-
-模块要求：
-- 名称: ${template.name}
-- 描述: ${template.description}
-- 最少行数: ${template.min_lines}行
-- 分类: ${template.category}
-
-请生成完整可运行的代码，包含注释和错误处理。`;
+    // 构建包含上下文的用户提示词
+    const contextualUserPrompt = this.buildContextualUserPrompt(softwareInfo, template);
 
     try {
       const generatedCode = await this.deepSeekClient.generateCode(
-        userPrompt, 
-        systemPrompt, 
+        contextualUserPrompt, 
+        contextualSystemPrompt, 
         totalPages, 
         pageIndex
       );
@@ -441,8 +939,331 @@ code_generation:
       };
     } catch (error) {
       console.error(`API生成失败，使用fallback: ${error instanceof Error ? error.message : error}`);
-      throw error; // 让上层处理fallback
+      throw error;
     }
+  }
+
+  // 新增：构建包含上下文的系统提示词
+  private buildContextualSystemPrompt(template: CodeTemplate, softwareInfo: SoftwareInfo): string {
+    const basePrompt = this.config.prompts.system_prompt.replace('{min_lines}', template.min_lines.toString());
+    
+    const languageSpecificPrompt = `
+重要：请严格按照以下要求生成代码：
+- 开发语言：${softwareInfo.developmentLanguage}
+- 必须使用 ${softwareInfo.developmentLanguage} 语言编写所有代码
+- 遵循 ${softwareInfo.developmentLanguage} 的语法规范和最佳实践
+- 使用 ${softwareInfo.developmentLanguage} 的标准库和框架
+
+`;
+    
+    const contextInfo = `
+上下文信息：
+- 项目包名: ${this.codeContext.projectStructure.packageName}
+- 主应用类: ${this.codeContext.projectStructure.mainClassName}
+- 数据库架构: ${this.codeContext.projectStructure.databaseSchema}
+- API前缀: ${this.codeContext.projectStructure.apiPrefix}
+
+已生成的代码模块：
+${this.codeContext.generatedSummaries.map(summary => 
+  `- ${summary.title} (${summary.category}): 主要类 [${summary.mainClasses.join(', ')}]`
+).join('\n')}
+
+共享数据模型：
+${this.codeContext.sharedModels.map(model => 
+  `- ${model.name} (${model.type}): ${model.fields.join(', ')}`
+).join('\n')}
+
+API接口定义：
+${this.codeContext.apiEndpoints.map(api => 
+  `- ${api.method} ${api.path}: ${api.description}`
+).join('\n')}
+
+数据库表结构：
+${this.codeContext.databaseTables.map(table => 
+  `- ${table.name}: ${table.fields.join(', ')}`
+).join('\n')}
+
+请确保生成的代码与上述上下文信息保持一致，使用相同的类名、包名、数据结构等。
+请直接输出代码，不要添加任何解释性文字或markdown格式标记。
+    `;
+
+    return languageSpecificPrompt + basePrompt + contextInfo;
+  }
+
+  // 新增：构建包含上下文的用户提示词
+  private buildContextualUserPrompt(
+    softwareInfo: SoftwareInfo,
+    template: CodeTemplate & { category: string }
+  ): string {
+    const basePrompt = `请为"${softwareInfo.softwareName}"生成"${template.name}"模块的代码。
+
+重要要求：
+- 必须使用 ${softwareInfo.developmentLanguage} 语言
+- 直接输出代码，不要任何解释或说明文字
+- 不要使用markdown代码块格式
+- 代码必须完整可运行
+
+软件信息：
+- 名称: ${softwareInfo.softwareName}
+- 开发语言: ${softwareInfo.developmentLanguage}
+- 数据库: ${softwareInfo.database}
+- 平台: ${softwareInfo.platforms.join(', ')}
+- 功能描述: ${softwareInfo.functionalDescription}
+
+模块要求：
+- 名称: ${template.name}
+- 描述: ${template.description}
+- 最少行数: ${template.min_lines}行
+- 分类: ${template.category}`;
+
+    // 根据开发语言和模板类别添加特定的指导
+    let languageSpecificGuidance = this.getLanguageSpecificGuidance(softwareInfo.developmentLanguage, template.category);
+    let categorySpecificGuidance = this.getCategorySpecificGuidance(softwareInfo, template);
+
+    return basePrompt + languageSpecificGuidance + categorySpecificGuidance + `
+
+请生成完整可运行的 ${softwareInfo.developmentLanguage} 代码，确保：
+1. 严格使用 ${softwareInfo.developmentLanguage} 语法
+2. 与项目整体架构保持一致
+3. 正确引用已定义的类和接口
+4. 包含完整的导入语句和依赖
+5. 添加详细的注释和错误处理
+6. 遵循 ${softwareInfo.developmentLanguage} 的最佳实践和设计模式
+
+直接输出代码，不要任何额外说明：`;
+  }
+
+  // 新增：根据开发语言获取特定指导
+  private getLanguageSpecificGuidance(language: string, category: string): string {
+    const lowerLang = language.toLowerCase();
+    
+    if (lowerLang.includes('java')) {
+      return `
+Java开发规范：
+- 使用标准的Java包结构
+- 遵循Java命名约定（类名大驼峰，方法名小驼峰）
+- 使用Spring Boot框架（如适用）
+- 包含适当的注解（@Service, @Controller, @Entity等）
+- 使用try-catch进行异常处理
+      `;
+    } else if (lowerLang.includes('python')) {
+      return `
+Python开发规范：
+- 遵循PEP 8代码风格
+- 使用适当的Python框架（Django, Flask, FastAPI等）
+- 使用类型提示（type hints）
+- 包含docstring文档
+- 使用try-except进行异常处理
+      `;
+    } else if (lowerLang.includes('javascript') || lowerLang.includes('typescript') || lowerLang.includes('node')) {
+      return `
+JavaScript/TypeScript开发规范：
+- 使用ES6+语法
+- 如果是TypeScript，包含类型定义
+- 使用适当的框架（Express, React, Vue等）
+- 使用async/await处理异步操作
+- 包含JSDoc注释
+      `;
+    } else if (lowerLang.includes('c#') || lowerLang.includes('csharp')) {
+      return `
+C#开发规范：
+- 使用.NET框架或.NET Core
+- 遵循C#命名约定
+- 使用适当的特性（Attributes）
+- 包含XML文档注释
+- 使用try-catch进行异常处理
+      `;
+    } else if (lowerLang.includes('go') || lowerLang.includes('golang')) {
+      return `
+Go开发规范：
+- 遵循Go代码风格
+- 使用Go标准库
+- 包含适当的错误处理
+- 使用接口进行抽象
+- 包含包级别注释
+      `;
+    }
+    
+    return `
+${language}开发规范：
+- 遵循${language}的标准语法和约定
+- 使用${language}的标准库和常用框架
+- 包含适当的错误处理机制
+- 添加详细的代码注释
+    `;
+  }
+
+  // 新增：根据模板类别获取特定指导
+  private getCategorySpecificGuidance(softwareInfo: SoftwareInfo, template: CodeTemplate & { category: string }): string {
+    switch (template.category) {
+      case 'backend':
+        return `
+后端开发规范：
+- 使用包名: ${this.codeContext.projectStructure.packageName}
+- 引用已定义的实体类: ${this.codeContext.sharedModels.map(m => m.name).join(', ')}
+- 实现API接口: ${this.codeContext.apiEndpoints.filter(api => 
+    template.name.toLowerCase().includes('controller') || 
+    template.name.toLowerCase().includes('api')
+  ).map(api => `${api.method} ${api.path}`).join(', ')}
+- 确保与其他服务层的一致性
+        `;
+        
+      case 'frontend':
+        return `
+前端开发规范：
+- 调用API接口: ${this.codeContext.apiEndpoints.map(api => api.path).join(', ')}
+- 使用数据模型: ${this.codeContext.sharedModels.map(m => m.name).join(', ')}
+- 保持与后端接口的一致性
+- 确保组件间的数据流畅通
+        `;
+        
+      case 'database':
+        return `
+数据库设计规范：
+- 数据库名: ${this.codeContext.projectStructure.databaseSchema}
+- 已定义的表: ${this.codeContext.databaseTables.map(t => t.name).join(', ')}
+- 保持表结构的一致性和完整性
+- 确保外键关系正确
+        `;
+        
+      case 'config':
+        return `
+配置文件规范：
+- 项目名: ${softwareInfo.softwareName}
+- 主应用类: ${this.codeContext.projectStructure.mainClassName}
+- 数据库配置与 ${this.codeContext.projectStructure.databaseSchema} 保持一致
+        `;
+        
+      default:
+        return '';
+    }
+  }
+
+  // 新增：从生成的代码中更新上下文
+  private async updateContextFromGeneratedCode(codePage: CodePage, template: CodeTemplate & { category: string }) {
+    try {
+      // 简单的代码分析，提取关键信息
+      const codeContent = codePage.content;
+      
+      // 提取类名
+      const classMatches = codeContent.match(/class\s+(\w+)/g) || [];
+      const mainClasses = classMatches.map(match => match.replace('class ', ''));
+      
+      // 提取方法名
+      const methodMatches = codeContent.match(/public\s+\w+\s+(\w+)\s*\(/g) || [];
+      const mainMethods = methodMatches.map(match => 
+        match.replace(/public\s+\w+\s+/, '').replace(/\s*\(.*/, '')
+      );
+      
+      // 提取导入依赖
+      const importMatches = codeContent.match(/import\s+([^;]+);/g) || [];
+      const dependencies = importMatches.map(match => 
+        match.replace('import ', '').replace(';', '').trim()
+      );
+
+      // 更新上下文
+      this.codeContext.generatedSummaries.push({
+        title: template.name,
+        category: template.category,
+        mainClasses,
+        mainMethods,
+        dependencies,
+        exports: mainClasses // 简化处理
+      });
+
+      console.log(`更新上下文信息 - ${template.name}:`, {
+        classes: mainClasses,
+        methods: mainMethods.slice(0, 3), // 只显示前3个方法
+        dependencies: dependencies.slice(0, 3) // 只显示前3个依赖
+      });
+      
+    } catch (error) {
+      console.warn(`更新上下文失败 - ${template.name}:`, error);
+    }
+  }
+
+  // 新增：从fallback代码更新上下文（简化版）
+  private async updateContextFromFallbackCode(codePage: CodePage, template: CodeTemplate & { category: string }) {
+    try {
+      // 为fallback代码添加基本的上下文信息
+      const fallbackSummary = {
+        title: template.name,
+        category: template.category,
+        mainClasses: [template.name.replace(/\s+/g, '')], // 简化的类名
+        mainMethods: ['save', 'findAll', 'findById', 'update', 'delete'], // 通用方法
+        dependencies: [],
+        exports: [template.name.replace(/\s+/g, '')]
+      };
+
+      this.codeContext.generatedSummaries.push(fallbackSummary);
+      
+      console.log(`更新fallback上下文信息 - ${template.name}`);
+      
+    } catch (error) {
+      console.warn(`更新fallback上下文失败 - ${template.name}:`, error);
+    }
+  }
+
+  // 新增：获取当前代码上下文信息（用于调试和展示）
+  public getCodeContext(): CodeContext {
+    return { ...this.codeContext };
+  }
+
+  // 新增：导出项目架构摘要
+  public generateArchitectureSummary(): string {
+    const context = this.codeContext;
+    
+    return `
+# 项目架构摘要
+
+## 基本信息
+- 项目包名: ${context.projectStructure.packageName}
+- 主应用类: ${context.projectStructure.mainClassName}  
+- 数据库架构: ${context.projectStructure.databaseSchema}
+- API前缀: ${context.projectStructure.apiPrefix}
+
+## 数据模型 (${context.sharedModels.length}个)
+${context.sharedModels.map(model => 
+  `### ${model.name} (${model.type})
+${model.fields.map(field => `- ${field}`).join('\n')}`
+).join('\n\n')}
+
+## API接口 (${context.apiEndpoints.length}个)
+${context.apiEndpoints.map(api => 
+  `- ${api.method} ${api.path} - ${api.description}`
+).join('\n')}
+
+## 数据库表 (${context.databaseTables.length}个)
+${context.databaseTables.map(table => 
+  `### ${table.name}
+字段: ${table.fields.join(', ')}
+关系: ${table.relationships.join(', ')}`
+).join('\n\n')}
+
+## 生成的代码模块 (${context.generatedSummaries.length}个)
+${context.generatedSummaries.map(summary => 
+  `### ${summary.title} (${summary.category})
+- 主要类: ${summary.mainClasses.join(', ')}
+- 主要方法: ${summary.mainMethods.slice(0, 5).join(', ')}${summary.mainMethods.length > 5 ? '...' : ''}
+- 依赖: ${summary.dependencies.slice(0, 3).join(', ')}${summary.dependencies.length > 3 ? '...' : ''}`
+).join('\n\n')}
+    `.trim();
+  }
+
+  // 新增：测试API连接
+  public async testApiConnection() {
+    return await this.deepSeekClient.diagnoseConnection();
+  }
+
+  // 生成单个代码页面（保留原有方法以兼容性）
+  private async generateSinglePage(
+    softwareInfo: SoftwareInfo,
+    template: CodeTemplate & { category: string },
+    pageIndex: number,
+    totalPages?: number
+  ): Promise<CodePage> {
+    // 重定向到新的上下文方法
+    return this.generateSinglePageWithContext(softwareInfo, template, pageIndex, totalPages);
   }
 
   // 创建备用页面（当生成失败时使用）
