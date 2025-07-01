@@ -100,20 +100,20 @@ const nextConfigWithOutSentry = {
   //   defaultLocale: "",
   //   localeDetection: false,
   // },
-  async redirects() {
-    // Only enable redirects in production environment
-    if (process.env.NODE_ENV === "production") {
-      return [
-        {
-          source: "/:path*",
-          destination: `${process.env.HOST}/:path*`,
-          permanent: false,
-          locale: false,
-        },
-      ];
-    }
-    return [];
-  },
+  // async redirects() {
+  //   // Only enable redirects in production environment and when HOST is properly configured
+  //   if (process.env.NODE_ENV === "production" && process.env.HOST && process.env.HOST !== 'localhost:3000' && process.env.HOST !== 'localhost') {
+  //     return [
+  //       {
+  //         source: "/:path*",
+  //         destination: `${process.env.HOST}/:path*`,
+  //         permanent: false,
+  //         locale: false,
+  //       },
+  //     ];
+  //   }
+  //   return [];
+  // },
   serverRuntimeConfig: {
     // Will only be available on the server side
     apiEndpoint: process.env.API_ENDPOINT,

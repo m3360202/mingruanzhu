@@ -6,7 +6,7 @@ import { NextPage } from "next";
 import { Box, useTheme, useMediaQuery } from "@mui/material";
 import SideBar from "@/components/SideBar";
 import GenerationBoard from "@/views/GenerationBoard";
-import { SoftwareInfo } from "@/types/software";
+import { SoftwareInfo, CodePage } from "@/types/software";
 
 const SoftwareCopyrightPage: NextPage = () => {
   const theme = useTheme();
@@ -26,6 +26,11 @@ const SoftwareCopyrightPage: NextPage = () => {
     setShouldGenerate(true);
     // 重置触发器以便下次使用
     setTimeout(() => setShouldGenerate(false), 1000);
+  };
+
+  const handleGenerationComplete = (codePages: CodePage[]) => {
+    // 代码生成完成后的处理逻辑
+    console.log(`代码生成完成，共生成 ${codePages.length} 个文件`);
   };
 
   return (
@@ -76,7 +81,7 @@ const SoftwareCopyrightPage: NextPage = () => {
           >
             <GenerationBoard 
               softwareInfo={softwareInfo}
-              onGenerate={handleGenerate}
+              onGenerate={handleGenerationComplete}
               shouldGenerate={shouldGenerate}
             />
           </Box>
